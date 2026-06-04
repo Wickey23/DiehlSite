@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { Customer } from "../types";
 import { 
   X, User, Mail, Lock, Phone, Building, ShoppingBag, 
   Loader2, CheckCircle, Calendar, MapPin, CreditCard, 
-  ArrowRight, Edit2, Save, LogOut, ShieldCheck 
+  ArrowRight, Edit2, Save, LogOut, ShieldCheck,
+  Wrench, Activity, Compass, FileText, AlertTriangle, Truck
 } from "lucide-react";
 
 interface CustomerDashboardProps {
@@ -20,6 +21,7 @@ export default function CustomerDashboard({ onClose }: CustomerDashboardProps) {
   const { 
     currentCustomer, 
     orders, 
+    serviceAppointments,
     registerCustomer, 
     loginCustomer, 
     logoutCustomer, 
@@ -27,7 +29,9 @@ export default function CustomerDashboard({ onClose }: CustomerDashboardProps) {
   } = useApp();
 
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [activeTab, setActiveTab] = useState<"orders" | "profile">("orders");
+  const [activeTab, setActiveTab] = useState<"tracking" | "orders" | "profile">("tracking");
+  const [selectedTrackType, setSelectedTrackType] = useState<"order" | "service">("order");
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -141,6 +145,26 @@ export default function CustomerDashboard({ onClose }: CustomerDashboardProps) {
       (currentCustomer && order.customerId === currentCustomer.id) ||
       (currentCustomer && order.email.toLowerCase().trim() === currentCustomer.email.toLowerCase().trim())
   );
+
+  // Filter service appointments matching logged-in customer
+  const customerAppointments = (serviceAppointments || []).filter(
+    (app) => 
+      (currentCustomer && app.customerId === currentCustomer.id) ||
+      (currentCustomer && app.email.toLowerCase().trim() === currentCustomer.email.toLowerCase().trim())
+  );
+
+  // Auto-select first item when orders or appointments update
+  useEffect(() => {
+    if (activeTab === "tracking" && !selectedTrackId) {
+      if (customerOrders.length > 0) {
+        setSelectedTrackId(customerOrders[0].id);
+        setSelectedTrackType("order");
+      } else if (customerAppointments.length > 0) {
+        setSelectedTrackId(customerAppointments[0].id);
+        setSelectedTrackType("service");
+      }
+    }
+  }, [activeTab, customerOrders, customerAppointments, selectedTrackId]);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 font-sans select-text">
@@ -399,27 +423,40 @@ export default function CustomerDashboard({ onClose }: CustomerDashboardProps) {
           </div>
         ) : (
           /* AUTHENTICATED: CUSTOMER INNER PORTAL */
-          <div className="flex-1 flex flex-col min-h-[480px] max-h-[80vh]">
+          <div className="flex-1 flex flex-col min-h-[480px] max-h-[82vh]">
             {/* Nav Tab Options */}
-            <div className="px-6 bg-[#050B16] border-b border-white/10 flex justify-between items-center select-none shrink-0">
+            <div className="px-6 bg-[#050B16] border-b border-white/10 flex justify-between items-center select-none shrink-0 overflow-x-auto scrollbar-none">
               <div className="flex gap-4">
                 <button
                   type="button"
+                  onClick={() => { setActiveTab("tracking"); setIsEditingProfile(false); }}
+                  className={`py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                    activeTab === "tracking" 
+                      ? "text-[#FBBF24] border-[#FBBF24]" 
+                      : "text-slate-400 border-transparent hover:text-white"
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Real-Time Tracking ({customerOrders.length + customerAppointments.length})</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => { setActiveTab("orders"); setIsEditingProfile(false); }}
-                  className={`py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                     activeTab === "orders" 
                       ? "text-[#FBBF24] border-[#FBBF24]" 
                       : "text-slate-400 border-transparent hover:text-white"
                   }`}
                 >
                   <ShoppingBag className="w-3.5 h-3.5" />
-                  <span>My Requisitions ({customerOrders.length})</span>
+                  <span>Ledger History ({customerOrders.length})</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => { setActiveTab("profile"); startEditingProfile(currentCustomer); }}
-                  className={`py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                     activeTab === "profile" 
                       ? "text-[#FBBF24] border-[#FBBF24]" 
                       : "text-slate-400 border-transparent hover:text-white"
@@ -432,15 +469,318 @@ export default function CustomerDashboard({ onClose }: CustomerDashboardProps) {
 
               <button
                 onClick={logoutCustomer}
-                className="px-3 py-1.5 rounded bg-red-950/20 hover:bg-red-900/30 border border-red-900/30 text-red-400 hover:text-red-300 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 ml-4 rounded bg-red-950/20 hover:bg-red-900/30 border border-red-900/30 text-red-500 hover:text-red-400 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign Out</span>
               </button>
             </div>
 
-            {/* TAB CONTENT: ORDERS HISTORY */}
+            {/* TAB CONTENT */}
             <div className="p-6 flex-1 overflow-y-auto">
+              {activeTab === "tracking" && (() => {
+                const PART_STATUS_STEPS = [
+                  "Pending Desk Review",
+                  "Assembling at Depot",
+                  "In-Transit to Queens Bay",
+                  "Ready for Pickup",
+                  "Dispatched & Completed"
+                ];
+
+                const SERVICE_STATUS_STEPS = [
+                  "Scheduling",
+                  "Diagnosing",
+                  "Parts Sourcing",
+                  "Bay Servicing",
+                  "Ready for Pickup",
+                  "Archived & Dispatched"
+                ];
+
+                return (
+                  <div className="space-y-4">
+                    {/* Top Notification banner */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 p-2 px-3.5 bg-yellow-950/20 border border-yellow-900/30 rounded text-[9px] text-[#FBBF24] font-mono leading-none select-none">
+                      <span className="flex items-center gap-1.5 animate-pulse uppercase font-black tracking-widest">
+                        <Activity className="w-3 h-3 animate-spin" />
+                        <span>// ESTABLISHING REAL-TIME INTEL DATALINK</span>
+                      </span>
+                      <span className="text-[8px] text-slate-500 uppercase font-bold">
+                        ACTIVE SECURE SOCKET FEED
+                      </span>
+                    </div>
+
+                    {customerOrders.length === 0 && customerAppointments.length === 0 ? (
+                      <div className="py-14 text-center rounded bg-black/20 border border-white/5 select-none space-y-4">
+                        <Compass className="w-9 h-9 text-slate-500 mx-auto animate-pulse" />
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">No Active Shipments or Appointments</h4>
+                          <p className="text-[10px] text-slate-500 mt-1 max-w-[280px] mx-auto leading-relaxed uppercase font-bold text-center">
+                            There is nothing currently queued in the dispatcher's bay. Book a Service Appointment or checkout from the Parts Catalog to launch tracking!
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-left">
+                        {/* SIDEBAR: ACTIVE TRACKERS */}
+                        <div className="md:col-span-4 space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest block mb-1">
+                            // SELECT DISPATCH STREAM
+                          </span>
+                          
+                          {/* Render Parts Orders list */}
+                          {customerOrders.map((ord) => {
+                            const isSelected = selectedTrackId === ord.id && selectedTrackType === "order";
+                            return (
+                              <button
+                                key={ord.id}
+                                onClick={() => { setSelectedTrackId(ord.id); setSelectedTrackType("order"); }}
+                                className={`w-full text-left p-3 rounded border text-xs font-bold transition-all flex flex-col gap-1 cursor-pointer focus:outline-none ${
+                                  isSelected
+                                    ? "bg-[#FBBF24]/10 border-[#FBBF24] text-white"
+                                    : "bg-black/20 border-white/5 text-slate-400 hover:border-white/10 hover:text-white"
+                                }`}
+                              >
+                                <div className="flex justify-between items-center w-full">
+                                  <span className={`text-[9px] uppercase font-black px-1 rounded ${isSelected ? "bg-[#FBBF24]/20 text-[#FBBF24]" : "bg-slate-900 text-slate-500"}`}>
+                                    PARTS REQ
+                                  </span>
+                                  <span className="font-mono text-[9px] text-slate-500">{ord.date}</span>
+                                </div>
+                                <span className="font-mono font-black text-[#FBBF24] text-xs leading-none mt-1">{ord.id}</span>
+                                <span className="text-[10px] truncate mt-0.5 leading-normal opacity-85">{ord.status}</span>
+                              </button>
+                            );
+                          })}
+
+                          {/* Render Service Appointments list */}
+                          {customerAppointments.map((app) => {
+                            const isSelected = selectedTrackId === app.id && selectedTrackType === "service";
+                            return (
+                              <button
+                                key={app.id}
+                                onClick={() => { setSelectedTrackId(app.id); setSelectedTrackType("service"); }}
+                                className={`w-full text-left p-3 rounded border text-xs font-bold transition-all flex flex-col gap-1 cursor-pointer focus:outline-none ${
+                                  isSelected
+                                    ? "bg-[#FBBF24]/10 border-[#FBBF24] text-white"
+                                    : "bg-black/20 border-white/5 text-slate-400 hover:border-white/10 hover:text-white"
+                                }`}
+                              >
+                                <div className="flex justify-between items-center w-full">
+                                  <span className={`text-[9px] uppercase font-black px-1 rounded ${isSelected ? "bg-amber-500/20 text-amber-400" : "bg-slate-900 text-slate-505"}`}>
+                                    SERVICE APT
+                                  </span>
+                                  <span className="font-mono text-[9px] text-slate-405">{app.date}</span>
+                                </div>
+                                <span className="font-mono font-black text-amber-400 text-xs leading-none mt-1">{app.id}</span>
+                                <span className="text-[10px] truncate mt-0.5 leading-normal opacity-85">{app.status}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* MAIN MONITOR: TRACKER DETAILS */}
+                        <div className="md:col-span-8 bg-black/30 border border-white/10 rounded-lg p-4 space-y-4 max-h-[460px] overflow-y-auto">
+                          {selectedTrackType === "order" && (() => {
+                            const order = customerOrders.find(o => o.id === selectedTrackId);
+                            if (!order) return <p className="text-[11px] text-slate-450 font-mono uppercase">Initializing datalink stream...</p>;
+                            
+                            const activeStep = PART_STATUS_STEPS.indexOf(order.status);
+                            const pct = activeStep === 0 ? 15 : activeStep === 1 ? 35 : activeStep === 2 ? 65 : activeStep === 3 ? 85 : 100;
+                            
+                            return (
+                              <div className="space-y-4">
+                                {/* Header metrics card */}
+                                <div className="flex justify-between items-start border-b border-white/5 pb-3">
+                                  <div>
+                                    <h3 className="text-xs font-black uppercase text-white font-mono tracking-wide flex items-center gap-1.5">
+                                      <ShoppingBag className="w-3.5 h-3.5 text-[#FBBF24]" />
+                                      <span>PARTS REQUISITION MONITOR</span>
+                                    </h3>
+                                    <p className="font-mono text-xs text-[#FBBF24] font-black tracking-wider mt-1">{order.id}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest block">// TRANSACTION VALUE</span>
+                                    <span className="font-mono text-xs font-black text-white">${order.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+
+                                {/* Progress bar info */}
+                                <div className="space-y-1 rounded bg-[#050B16] p-2.5 border border-white/5 select-none text-left">
+                                  <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 leading-none">
+                                    <span>DATALINK PIPELINE FEED</span>
+                                    <span className="text-[#FBBF24] font-mono font-black">{pct}% CONNECTED</span>
+                                  </div>
+                                  <div className="w-full bg-slate-900 h-2 rounded border border-white/5 overflow-hidden">
+                                    <div className="bg-[#FBBF24] h-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+
+                                {/* Vertical Stepper timeline */}
+                                <div className="space-y-1.5 pl-2 select-none text-left">
+                                  {PART_STATUS_STEPS.map((step, idx) => {
+                                    const isDone = idx < activeStep;
+                                    const isCurrent = idx === activeStep;
+                                    const isFuture = idx > activeStep;
+                                    
+                                    const stepIcon = 
+                                      idx === 0 ? <FileText className="w-3 h-3" /> :
+                                      idx === 1 ? <Wrench className="w-3 h-3" /> :
+                                      idx === 2 ? <Truck className="w-3 h-3 text-[#0a1428]" /> :
+                                      idx === 3 ? <CheckCircle className="w-3 h-3" /> :
+                                      <Lock className="w-3 h-3" />;
+                                      
+                                    return (
+                                      <div key={idx} className="flex gap-3.5 relative">
+                                        {idx < PART_STATUS_STEPS.length - 1 && (
+                                          <div className={`absolute left-2.5 top-5 bottom-0 w-0.5 -ml-[1px] ${isDone ? "bg-[#FBBF24]" : "bg-white/10"}`} />
+                                        )}
+                                        <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center shrink-0 border relative z-10 transition-colors ${
+                                          isDone ? "bg-[#FBBF24] text-[#0A1428] border-[#FBBF24]" :
+                                          isCurrent ? "bg-[#050B16] text-[#FBBF24] border-[#FBBF24] animate-pulse" :
+                                          "bg-[#050B16] text-slate-500 border-white/15"
+                                        }`}>
+                                          {stepIcon}
+                                        </div>
+                                        <div className="pb-3.5 pt-0.5 text-left">
+                                          <h4 className={`text-[11px] font-black uppercase tracking-wider ${isFuture ? "text-slate-500" : isCurrent ? "text-[#FBBF24]" : "text-white"}`}>
+                                            {step} {isCurrent && <span className="text-[8px] animate-pulse lowercase font-mono"> (active monitoring stage)</span>}
+                                          </h4>
+                                          <p className="text-[10px] text-slate-400 uppercase leading-relaxed mt-0.5 font-bold">
+                                            {idx === 0 ? "Desk check counter verification completed successfully." :
+                                             idx === 1 ? "OEM logistics coordinator assembly on storage racks." :
+                                             idx === 2 ? "Wagon courier loading active. Porting down Rockaway Blvd corridor." :
+                                             idx === 3 ? "Package logged in counters and bays. Ready for counter signature." :
+                                             "Recipient verified lock. Requisition complete."}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Interactive Live Monitor Feed */}
+                                <div className="bg-black/50 border border-white/10 rounded p-3 font-mono text-[10px] select-all space-y-1 text-[#FBBF24] leading-relaxed text-left">
+                                  <p className="text-slate-500 uppercase font-black tracking-wider text-[8px] mb-1.5 select-none">// REAL-TIME DIAGNOSTIC MATRIX FEED</p>
+                                  <p className="opacity-90">[{order.date}] REQUISITION STREAM CONNECTED.</p>
+                                  <p className={activeStep >= 1 ? "opacity-90" : "opacity-35"}>[{order.date}] LOGISTICS: ASSEMBLY SEQUENCE COMPLETE FOR DEPOT HARNESS.</p>
+                                  <p className={activeStep >= 2 ? "opacity-90 font-black animate-pulse" : "opacity-35"}>[{order.date}] DISPATCH: WAGON COURIER OUTWARD TRANSIT ACTIVE.</p>
+                                  <p className={activeStep >= 3 ? "opacity-90" : "opacity-35"}>[{order.date}] TERMINAL STATUS: ARRIVED AT COUNTER AND BAYS.</p>
+                                  <p className={activeStep >= 4 ? "opacity-90" : "opacity-35"}>[{order.date}] TRANSACTION: SUCCESS SECURE COURIER CLOSED.</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {selectedTrackType === "service" && (() => {
+                            const app = customerAppointments.find(a => a.id === selectedTrackId);
+                            if (!app) return <p className="text-[11px] text-slate-450 font-mono uppercase">Initializing service datalink...</p>;
+                            
+                            const activeStep = SERVICE_STATUS_STEPS.indexOf(app.status);
+                            const pct = activeStep === 0 ? 10 : activeStep === 1 ? 30 : activeStep === 2 ? 50 : activeStep === 3 ? 75 : activeStep === 4 ? 90 : 100;
+                            
+                            return (
+                              <div className="space-y-4">
+                                {/* Header metrics card */}
+                                <div className="flex justify-between items-start border-b border-white/5 pb-3">
+                                  <div>
+                                    <h3 className="text-xs font-black uppercase text-white font-mono tracking-wide flex items-center gap-1.5">
+                                      <Wrench className="w-3.5 h-3.5 text-amber-405" />
+                                      <span>FLEET REBUILD BAY STATUS</span>
+                                    </h3>
+                                    <p className="font-mono text-xs text-amber-400 font-black tracking-wider mt-1">{app.id}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest block">// APP ESTIMATE</span>
+                                    <span className="font-mono text-xs font-bold text-[#FBBF24]">${app.estimatedPrice.toLocaleString()}</span>
+                                  </div>
+                                </div>
+
+                                {/* Progress bar info */}
+                                <div className="space-y-1 rounded bg-[#050B16] p-2.5 border border-white/5 select-none text-left">
+                                  <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 leading-none">
+                                    <span>BAY SERVICE CONSOLE FEED</span>
+                                    <span className="text-amber-400 font-mono font-black">{pct}% DIAGNOSTICS</span>
+                                  </div>
+                                  <div className="w-full bg-slate-900 h-2 rounded border border-white/5 overflow-hidden">
+                                    <div className="bg-amber-450 h-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+
+                                {/* Tech & Bay Specs */}
+                                <div className="grid grid-cols-2 gap-3.5 bg-black/25 p-3 rounded text-[11px] leading-relaxed uppercase border border-white/5 font-sans font-bold text-left">
+                                  <div>
+                                    <span className="text-[9px] text-slate-500 block font-black mb-0.5 tracking-wider">// LEAD REBUILD HEAVY-DUTY TECHNICIAN</span>
+                                    <span className="text-white">{app.assignedTechnician || "Marc Davis (Senior Coordinator)"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[9px] text-slate-500 block font-black mb-0.5 tracking-wider">// ASSIGNED BAY POSITION</span>
+                                    <span className="text-amber-450 font-mono font-black">{app.bayNumber || "Bay #4 (Richmond Hill Hub)"}</span>
+                                  </div>
+                                </div>
+
+                                {/* Vertical Stepper timeline */}
+                                <div className="space-y-1.5 pl-2 select-none text-left">
+                                  {SERVICE_STATUS_STEPS.map((step, idx) => {
+                                    const isDone = idx < activeStep;
+                                    const isCurrent = idx === activeStep;
+                                    const isFuture = idx > activeStep;
+                                    
+                                    const stepIcon = 
+                                      idx === 0 ? <Calendar className="w-3 h-3" /> :
+                                      idx === 1 ? <Activity className="w-3 h-3" /> :
+                                      idx === 2 ? <ShoppingBag className="w-3 h-3" /> :
+                                      idx === 3 ? <Wrench className="w-3 h-3 text-[#0a1428]" /> :
+                                      idx === 4 ? <CheckCircle className="w-3 h-3" /> :
+                                      <Lock className="w-3 h-3" />;
+                                      
+                                    return (
+                                      <div key={idx} className="flex gap-3.5 relative">
+                                        {idx < SERVICE_STATUS_STEPS.length - 1 && (
+                                          <div className={`absolute left-2.5 top-5 bottom-0 w-0.5 -ml-[1px] ${isDone ? "bg-amber-400" : "bg-white/10"}`} />
+                                        )}
+                                        <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center shrink-0 border relative z-10 transition-colors ${
+                                          isDone ? "bg-amber-400 text-[#0A1428] border-amber-500" :
+                                          isCurrent ? "bg-[#050B16] text-amber-400 border-amber-400 animate-pulse" :
+                                          "bg-[#050B16] text-slate-500 border-white/15"
+                                        }`}>
+                                          {stepIcon}
+                                        </div>
+                                        <div className="pb-3.5 pt-0.5 text-left">
+                                          <h4 className={`text-[11px] font-black uppercase tracking-wider ${isFuture ? "text-slate-500" : isCurrent ? "text-amber-400" : "text-white"}`}>
+                                            {step} {isCurrent && <span className="text-[8px] animate-pulse lowercase font-mono"> (bay working stage)</span>}
+                                          </h4>
+                                          <p className="text-[10px] text-slate-400 uppercase leading-relaxed mt-0.5 font-bold">
+                                            {idx === 0 ? "Scheduler desk locks and validates technician dispatch slot." :
+                                             idx === 1 ? "Wired digital scanners connected to chassis framework modules." :
+                                             idx === 2 ? "Parts counter sourcing OEM valves from depot cabinets." :
+                                             idx === 3 ? "Heavy-duty wrench and rebuild active under hydraulic lifts." :
+                                             idx === 4 ? "Diagnostics check cleared. Quality team signs bay release forms." :
+                                             "Rebuild archived. Carrier departed from lot premises."}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Technician Action Log Notes */}
+                                <div className="bg-amber-950/20 border border-amber-500/20 rounded p-3 select-text text-[11.5px] leading-relaxed text-amber-200 uppercase font-sans font-extrabold flex gap-2.5 items-start text-left">
+                                  <AlertTriangle className="w-4.5 h-4.5 text-amber-400 shrink-0 select-none" />
+                                  <div>
+                                    <span className="text-[9px] text-amber-400 block font-black leading-none mb-1 select-none">LEAD TECHNICIAN STATUS COMMENT:</span>
+                                    <p>{app.statusNotes || "Vehicle loaded into bay diagnostics position. Awaiting initial diagnostic scanner scan."}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {activeTab === "orders" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center select-none">

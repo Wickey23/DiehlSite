@@ -37,7 +37,7 @@ const SHOWROOM_SLIDES = [
 ];
 
 export default function Inventory() {
-  const { trucks } = useApp();
+  const { trucks, addLead, currentCustomer } = useApp();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [selectedCondition, setSelectedCondition] = useState<string>("All");
@@ -45,6 +45,9 @@ export default function Inventory() {
   const [selectedTruck, setSelectedTruck] = useState<CommercialTruck | null>(null);
   const [inquirySent, setInquirySent] = useState(false);
   const [inquiryName, setInquiryName] = useState("");
+  const [inquiryCompany, setInquiryCompany] = useState("");
+  const [inquiryPhone, setInquiryPhone] = useState("");
+  const [inquiryEmail, setInquiryEmail] = useState("");
   
   // Showroom Slideshow state
   const [activeSlide, setActiveSlide] = useState(0);
@@ -56,6 +59,16 @@ export default function Inventory() {
     return () => clearInterval(timer);
   }, []);
 
+  // Prepopulate if logged in
+  useEffect(() => {
+    if (currentCustomer && selectedTruck) {
+      setInquiryName(currentCustomer.name);
+      setInquiryCompany(currentCustomer.companyName || "");
+      setInquiryPhone(currentCustomer.phone);
+      setInquiryEmail(currentCustomer.email);
+    }
+  }, [currentCustomer, selectedTruck]);
+
   const nextShowroomSlide = () => {
     setActiveSlide((prev) => (prev + 1) % SHOWROOM_SLIDES.length);
   };
@@ -66,11 +79,29 @@ export default function Inventory() {
 
   const handleInquiry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inquiryName) return;
+    if (!inquiryName || !inquiryPhone) return;
+
+    if (selectedTruck) {
+      addLead({
+        name: inquiryName,
+        companyName: inquiryCompany || "Independent",
+        phone: inquiryPhone,
+        email: inquiryEmail || "N/A",
+        message: `Inquiry on vehicle stock ID #${selectedTruck.id} (${selectedTruck.name}). Price tag: ${selectedTruck.isQuoteOnly ? "Quote Program Required" : "$" + selectedTruck.price.toLocaleString()}`,
+        source: "Quick Inquiry",
+        details: `Asset spec sheet: Engine ${selectedTruck.engine} / Trans ${selectedTruck.transmission}. Stock ID: ${selectedTruck.id}`
+      });
+    }
+
     setInquirySent(true);
     setTimeout(() => {
       setInquirySent(false);
-      setInquiryName("");
+      if (!currentCustomer) {
+        setInquiryName("");
+        setInquiryCompany("");
+        setInquiryPhone("");
+        setInquiryEmail("");
+      }
       setSelectedTruck(null);
     }, 5000);
   };
@@ -432,33 +463,73 @@ export default function Inventory() {
                 <div className="h-[1px] bg-white/10" />
 
                 {/* Inquiry Form */}
-                <div className="p-4 rounded bg-[#050B16] border border-white/10">
-                  <h4 className="text-xs font-black uppercase text-white tracking-widest mb-3 text-[#FBBF24]">// Purchase Inquiry Form</h4>
-                  <form onSubmit={handleInquiry} className="grid sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-7">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Company Name & Direct Contact Officer"
-                        value={inquiryName}
-                        onChange={(e) => setInquiryName(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-[#0A1428] border border-white/10 rounded placeholder:text-slate-500 text-xs font-bold uppercase focus:outline-none focus:border-[#FBBF24]"
-                      />
+                <div className="p-5 rounded bg-[#050B16] border border-white/10 space-y-4">
+                  <div className="select-none leading-none">
+                    <h4 className="text-xs font-black uppercase text-white tracking-widest text-[#FBBF24]">// Purchase Inquiry Form</h4>
+                    <span className="text-[9px] text-slate-500 uppercase font-bold mt-1 block">Inbound fleet procurement setup desk</span>
+                  </div>
+
+                  <form onSubmit={handleInquiry} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[8px] font-black uppercase text-slate-450 tracking-wider block mb-1">Contact Name *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Sal Moretti"
+                          value={inquiryName}
+                          onChange={(e) => setInquiryName(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#0A1428] border border-white/10 rounded placeholder:text-slate-600 text-xs font-bold uppercase tracking-wide text-white focus:outline-none focus:border-[#FBBF24]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[8px] font-black uppercase text-slate-450 tracking-wider block mb-1">Company Svc</label>
+                        <input
+                          type="text"
+                          placeholder="Queens Construction Co."
+                          value={inquiryCompany}
+                          onChange={(e) => setInquiryCompany(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#0A1428] border border-white/10 rounded placeholder:text-slate-600 text-xs font-bold uppercase tracking-wide text-white focus:outline-none focus:border-[#FBBF24]"
+                        />
+                      </div>
                     </div>
-                    <div className="sm:col-span-5">
-                      <button
-                        type="submit"
-                        className="w-full py-2.5 bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-[#0A1428] font-black text-xs uppercase tracking-widest rounded transition-colors cursor-pointer"
-                        id="submit-inventory-inquiry"
-                      >
-                        ✔ Request Fast Quote
-                      </button>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[8px] font-black uppercase text-slate-455 tracking-wider block mb-1">Direct Dial Phone *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="(718) 555-8833"
+                          value={inquiryPhone}
+                          onChange={(e) => setInquiryPhone(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#0A1428] border border-white/10 rounded placeholder:text-slate-600 text-xs font-bold uppercase tracking-wide text-white focus:outline-none focus:border-[#FBBF24]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[8px] font-black uppercase text-slate-455 tracking-wider block mb-1">E-mail Inbox</label>
+                        <input
+                          type="email"
+                          placeholder="sal@queensconstruction.com"
+                          value={inquiryEmail}
+                          onChange={(e) => setInquiryEmail(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#0A1428] border border-white/10 rounded placeholder:text-slate-600 text-xs font-bold text-white focus:outline-none focus:focus:border-[#FBBF24]"
+                        />
+                      </div>
                     </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-[#0A1428] font-black text-xs uppercase tracking-widest rounded transition-colors cursor-pointer select-none shadow-md mt-1"
+                      id="submit-inventory-inquiry"
+                    >
+                      ✔ Submit Quote Request Desk
+                    </button>
                   </form>
 
                   {inquirySent && (
-                    <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs text-center rounded mt-3 uppercase tracking-wider">
-                      ✔ Inquiry received for {inquiryName}! Sal Diehl will contact you shortly with specs and commercial financing options.
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-[10.5px] text-center rounded mt-3 uppercase tracking-wider leading-relaxed">
+                      ✔ Inquiry received for {inquiryName} ({inquiryCompany || "Independent"})! Sal Diehl will contact you shortly with custom financing solutions.
                     </div>
                   )}
                 </div>

@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import Inventory from "./components/Inventory";
+import OperationsHub from "./components/OperationsHub";
 import BuildCustomizer from "./components/BuildCustomizer";
 import PartsCatalog from "./components/PartsCatalog";
 import Services from "./components/Services";
@@ -51,10 +52,13 @@ export default function App() {
         {currentPage === "showroom" && (
           <>
             {/* Hero Showcase header with interactive slideshow */}
-            <Hero />
+            <Hero onNavigate={navigateTo} />
             
             {/* Featured inventories with filters and specific real Isuzu photos */}
             <Inventory />
+
+            {/* Live Operations & traffic dashboard for fleet managers */}
+            <OperationsHub />
             
             {/* Specialized custom fleet & vocational body configurer */}
             <BuildCustomizer />

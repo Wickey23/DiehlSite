@@ -4,10 +4,11 @@
  */
 
 import React, { useState } from "react";
-import { Package, Search, ShoppingCart, CheckCircle, Tag, RefreshCw, CreditCard, Send } from "lucide-react";
+import { Package, Search, ShoppingCart, CheckCircle, Tag, RefreshCw, CreditCard, Send, Sparkles, Info, Truck, Check } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { PartItem } from "../types";
 import CheckoutModal from "./CheckoutModal";
+import { decodeCommercialVin, VIN_EXAMPLES } from "../lib/vinDecoder";
 
 export default function PartsCatalog() {
   const { parts, settings } = useApp();
@@ -19,6 +20,30 @@ export default function PartsCatalog() {
   const [rfqName, setRfqName] = useState("");
   const [rfqStatus, setRfqStatus] = useState<"idle" | "success">("idle");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
+  // VIN Lookup states
+  const [vinQuery, setVinQuery] = useState("");
+  const [decodedVin, setDecodedVin] = useState<any>(null);
+  const [vinError, setVinError] = useState("");
+  const [compMode, setCompMode] = useState<"manual" | "vin">("manual");
+
+  const triggerVinDecode = (typedVin: string) => {
+    if (!typedVin) {
+      setVinError("Please enter a valid 17-digit commercial vehicle VIN.");
+      setDecodedVin(null);
+      return;
+    }
+    const result = decodeCommercialVin(typedVin);
+    setDecodedVin(result);
+    if (result.isValid) {
+      setVinError("");
+      setCompatibilityTruck(result.compatibilityClass);
+    } else {
+      setVinError(result.notes || "Invalid VIN layout.");
+      setCompatibilityTruck(result.compatibilityClass);
+    }
+  };
+
 
   const toggleCart = (part: PartItem) => {
     // Check if the item is out of stock before adding
@@ -111,29 +136,166 @@ export default function PartsCatalog() {
             </div>
 
             {/* Interactive Compatibility verification widget */}
-            <div className="p-4 rounded bg-[#050B16]/70 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5">
-                <RefreshCw className="w-5 h-5 text-[#FBBF24] shrink-0" />
-                <div>
-                  <span className="text-xs font-black text-white uppercase tracking-wider block">Compatibility Verifier</span>
-                  <span className="text-[11px] text-slate-400 block font-medium">Verify structural fits against active Commercial Chassis categories.</span>
+            <div className="p-6 rounded bg-[#050B16]/95 border border-white/10 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5 select-none">
+                <div className="flex items-center gap-2.5">
+                  <RefreshCw className="w-5 h-5 text-[#FBBF24] shrink-0" />
+                  <div>
+                    <span className="text-xs font-black text-white uppercase tracking-wider block">Smart Compatibility Verifier</span>
+                    <span className="text-[11px] text-slate-400 block font-medium">Validate component structural fitments for your specific truck.</span>
+                  </div>
+                </div>
+                
+                {/* Tab buttons */}
+                <div className="flex bg-[#0A1428] p-1 rounded border border-white/5">
+                  <button
+                    onClick={() => setCompMode("manual")}
+                    className={`px-3 py-1.5 rounded text-[10px] uppercase font-black tracking-wider transition-all cursor-pointer ${
+                      compMode === "manual" 
+                        ? "bg-[#FBBF24] text-[#0A1428]" 
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Manual Select
+                  </button>
+                  <button
+                    onClick={() => setCompMode("vin")}
+                    className={`px-3 py-1.5 rounded text-[10px] uppercase font-black tracking-wider transition-all cursor-pointer ${
+                      compMode === "vin" 
+                        ? "bg-[#FBBF24] text-[#0A1428]" 
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    VIN Decoder
+                  </button>
                 </div>
               </div>
-              <div className="shrink-0 select-none">
-                <select
-                  value={compatibilityTruck}
-                  onChange={(e) => setCompatibilityTruck(e.target.value)}
-                  className="px-3.5 py-2.5 bg-[#0A1428] border border-white/10 rounded text-xs font-black uppercase tracking-widest text-[#FBBF24] focus:outline-none focus:border-[#FBBF24] cursor-pointer"
-                  id="parts-compatibility-select"
-                >
-                  <option value="Hino L Series">Hino L Series (L6 / L7)</option>
-                  <option value="Isuzu NQR/NRR">Isuzu Class 5 (NRR / NQR)</option>
-                  <option value="Freightliner M2">Freightliner Business Class M2</option>
-                  <option value="Mitsubishi FE">Mitsubishi Fuso FE Series</option>
-                  <option value="Cummins B6.7">Cummins B6.7 Engine Models</option>
-                </select>
-              </div>
+
+              {compMode === "manual" ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block tracking-wider">// CHASSIS REFERENCE GROUP</span>
+                    <p className="text-xs text-slate-300 font-medium">Select a commercial vehicle family to filter compatible part specs below.</p>
+                  </div>
+                  <div className="shrink-0 select-none">
+                    <select
+                      value={compatibilityTruck}
+                      onChange={(e) => setCompatibilityTruck(e.target.value)}
+                      className="px-4 py-2.5 bg-[#0A1428] border border-white/10 rounded text-xs font-black uppercase tracking-widest text-[#FBBF24] focus:outline-none focus:border-[#FBBF24] cursor-pointer w-full sm:w-auto"
+                      id="parts-compatibility-select"
+                    >
+                      <option value="Hino L Series">Hino L Series (L6 / L7)</option>
+                      <option value="Isuzu NQR/NRR">Isuzu Class 5 (NRR / NQR)</option>
+                      <option value="Freightliner M2">Freightliner Business Class M2</option>
+                      <option value="Mitsubishi FE">Mitsubishi Fuso FE Series</option>
+                      <option value="Cummins B6.7">Cummins B6.7 Engine Models</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* VIN Input bar */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block tracking-widest">// ENTER 17-DIGIT FLEET VIN</span>
+                    <div className="flex gap-2 flex-col sm:flex-row">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          maxLength={17}
+                          value={vinQuery}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            setVinQuery(val);
+                            if (val.length === 17) {
+                              triggerVinDecode(val);
+                            }
+                          }}
+                          placeholder="ENTER 17-CHAR COMMERCIAL VIN..."
+                          className="w-full px-4 py-2.5 bg-[#0A1428] border border-white/10 rounded text-xs font-black uppercase tracking-widest text-[#FBBF24] placeholder:text-slate-600 focus:outline-none focus:border-[#FBBF24]"
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-500 font-bold">
+                          {vinQuery.length}/17
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => triggerVinDecode(vinQuery)}
+                        className="px-5 py-2.5 bg-[#0A1428] hover:bg-[#050B16] text-[#FBBF24] border border-[#FBBF24]/20 hover:border-[#FBBF24]/60 text-xs font-black uppercase tracking-wider rounded transition-colors cursor-pointer shrink-0"
+                      >
+                        Decode Code
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preloaded real-world commercial test samples */}
+                  <div className="space-y-2 pt-1 pb-1">
+                    <span className="text-[9px] font-mono font-semibold text-slate-500 uppercase block tracking-wider">
+                      🧪 CLICK TO INSTANT-DECODE VALID COMMERCIAL TEST VIN EXAMPLES:
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {VIN_EXAMPLES.map((example) => (
+                        <button
+                          key={example.vin}
+                          type="button"
+                          onClick={() => {
+                            setVinQuery(example.vin);
+                            triggerVinDecode(example.vin);
+                          }}
+                          className={`p-2 text-left bg-black/40 hover:bg-black/60 border rounded relative select-none cursor-pointer transition-all box-border overflow-hidden ${
+                            vinQuery === example.vin ? "border-[#FBBF24] text-[#FBBF24]" : "border-white/5 text-slate-400"
+                          }`}
+                        >
+                          <span className="font-black block uppercase tracking-wider text-[8px] text-white truncate">
+                            {example.label.split(" (")[0]}
+                          </span>
+                          <span className="font-mono text-[8px] text-[#FBBF24] block mt-1 tracking-wider truncate">
+                            {example.vin}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Decoded results area */}
+                  {decodedVin && (
+                    <div className="p-4 rounded bg-[#0A1428] border border-emerald-500/10 text-xs leading-relaxed animate-fade-in relative overflow-hidden text-left">
+                      <div className="sm:absolute sm:right-4 sm:top-4 bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded text-[9px] font-mono font-black border border-emerald-500/20 uppercase tracking-widest flex items-center gap-1 w-fit mb-3 sm:mb-0">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>FITMENT LOCKED</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">// DECODED CHASSIS BLUEPRINT</span>
+                          <h4 className="text-sm font-black text-white uppercase italic tracking-wide">
+                            {decodedVin.year} {decodedVin.make} {decodedVin.model}
+                          </h4>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2 text-[11px] font-medium text-slate-300">
+                          <div>
+                            <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Engine Calibration</span>
+                            <span className="font-bold text-white uppercase">{decodedVin.engine}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Transmission Module</span>
+                            <span className="font-bold text-white uppercase">{decodedVin.transmission}</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-relaxed pt-2 border-t border-white/5 uppercase font-bold text-emerald-450">
+                          {decodedVin.notes}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {vinError && !decodedVin && (
+                    <div className="p-3 bg-rose-950/20 border border-rose-500/20 text-rose-300 font-bold text-xs rounded uppercase tracking-wider text-left">
+                      ⚠ {vinError}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
 
             {/* Parts Grid */}
             {filteredParts.length > 0 ? (
@@ -301,8 +463,13 @@ export default function PartsCatalog() {
                   </form>
 
                   {rfqStatus === "success" && (
-                    <div className="p-2.5 bg-[#0A1428] border border-emerald-500/20 text-emerald-400 font-bold text-xs text-center rounded uppercase tracking-wider leading-relaxed">
-                      ✔ RFQ Broadcasted! Sal's parts team will verify current Richmond Hill bay stock and email/call you within 15 minutes.
+                    <div className="p-2.5 bg-[#0A1428] border border-emerald-500/20 text-emerald-400 font-bold text-xs text-center rounded uppercase tracking-wider leading-relaxed space-y-1.5">
+                      <p>✔ RFQ Broadcasted! Sal's parts team will verify current Richmond Hill bay stock and email/call you within 15 minutes.</p>
+                      {decodedVin && (
+                        <p className="text-[10px] text-[#FBBF24] font-mono lowercase tracking-wide font-medium">
+                          linked specs: {decodedVin.year} {decodedVin.make} {decodedVin.model} (VIN: {decodedVin.vin})
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

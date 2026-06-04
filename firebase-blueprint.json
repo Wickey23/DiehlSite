@@ -1,0 +1,228 @@
+{
+  "entities": {
+    "CommercialTruck": {
+      "title": "CommercialTruck",
+      "description": "Represents a physical heavy-duty or commercial class vehicle unit in stock.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Box Truck", "Flatbed", "Dump Truck", "Reefer", "Utility", "Cab & Chassis"] },
+        "condition": { "type": "string", "enum": ["New", "Pre-Owned"] },
+        "year": { "type": "number" },
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "engine": { "type": "string" },
+        "transmission": { "type": "string" },
+        "mileage": { "type": "number" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["Available", "Sold", "Stock Limited"] },
+        "isQuoteOnly": { "type": "boolean" },
+        "specs": { "type": "array" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["name", "category", "condition", "year", "make", "model", "price", "imageUrl"]
+    },
+    "PartItem": {
+      "title": "PartItem",
+      "description": "Represents a heavy-duty or Isuzu OEM parts inventory line item.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sku": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Engine & Drivetrain", "Braking System", "Hydraulics", "Electrical", "Filters & Fluids"] },
+        "price": { "type": "number" },
+        "brand": { "type": "string" },
+        "stock": { "type": "number" },
+        "compatibleModels": { "type": "array" }
+      },
+      "required": ["sku", "name", "category", "price", "brand", "stock"]
+    },
+    "ServiceDetail": {
+      "title": "ServiceDetail",
+      "description": "Commercial diagnostic, upfit or towing service detail definitions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "iconName": { "type": "string" },
+        "features": { "type": "array" }
+      },
+      "required": ["title", "description", "iconName"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Client reviews from fleet owners across Queens and Long Island.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientName": { "type": "string" },
+        "companyName": { "type": "string" },
+        "review": { "type": "string" },
+        "rating": { "type": "number" },
+        "date": { "type": "string" }
+      },
+      "required": ["clientName", "review", "rating"]
+    },
+    "DealerSettings": {
+      "title": "DealerSettings",
+      "description": "Dealership address, phone direct links, weekday/Saturday operational schedules, and landing banner texts.",
+      "type": "object",
+      "properties": {
+        "phone": { "type": "string" },
+        "partsPhone": { "type": "string" },
+        "towPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "weekdayHours": { "type": "string" },
+        "saturdayHours": { "type": "string" },
+        "promoBanner": { "type": "string" },
+        "heroHeading": { "type": "string" },
+        "heroSubheading": { "type": "string" }
+      },
+      "required": ["phone", "address", "weekdayHours", "saturdayHours"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer login profile including secure phone digits and billing indexes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "address": { "type": "string" },
+        "dateCreated": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Purchase transaction requisition logs for parts in assembly depot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "tax": { "type": "number" },
+        "shipping": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["Fleet Card", "Credit Card", "Quote Request"] },
+        "cardNumberHidden": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending Desk Review", "Assembling at Depot", "In-Transit to Queens Bay", "Ready for Pickup", "Dispatched & Completed"] },
+        "date": { "type": "string" }
+      },
+      "required": ["customerName", "email", "total", "paymentMethod", "status", "date"]
+    },
+    "ServiceAppointment": {
+      "title": "ServiceAppointment",
+      "description": "Live dispatch scheduling mapping mechanics to specific bay integers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "customerName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "vehicleClass": { "type": "string", "enum": ["medium", "heavy"] },
+        "serviceType": { "type": "string", "enum": ["pm", "repair", "body"] },
+        "addons": { "type": "array" },
+        "estimatedPrice": { "type": "number" },
+        "duration": { "type": "string" },
+        "status": { "type": "string", "enum": ["Scheduling", "Diagnosing", "Parts Sourcing", "Bay Servicing", "Ready for Pickup", "Archived & Dispatched"] },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "bayNumber": { "type": "string" },
+        "assignedTechnician": { "type": "string" },
+        "statusNotes": { "type": "string" }
+      },
+      "required": ["customerName", "email", "vehicleClass", "serviceType", "status", "date"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Direct inbound user inquiry logged to the CRM Leads desk.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "message": { "type": "string" },
+        "source": { "type": "string", "enum": ["Contact Form", "Custom Build", "Service Estimator", "Parts RFQ", "Quick Inquiry"] },
+        "status": { "type": "string", "enum": ["New", "Contacted", "Qualified", "Lost", "Converted"] },
+        "date": { "type": "string" },
+        "details": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["name", "email", "source", "status", "date"]
+    },
+    "CareerApplicant": {
+      "title": "CareerApplicant",
+      "description": "Richmond Hill and regional applicant responses recorded via the Atlantic Avenue careers subfolder.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "experience": { "type": "string" },
+        "pitch": { "type": "string" },
+        "phone": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["name", "role", "experience", "pitch", "phone", "date"]
+    }
+  },
+  "firestore": {
+    "/trucks/{truckId}": {
+      "schema": "CommercialTruck",
+      "description": "Physical truck world rig inventory catalog."
+    },
+    "/parts/{partId}": {
+      "schema": "PartItem",
+      "description": "Stock of certified parts."
+    },
+    "/services/{serviceId}": {
+      "schema": "ServiceDetail",
+      "description": "Available diagnostic upfit packages."
+    },
+    "/testimonials/{testimonialId}": {
+      "schema": "Testimonial",
+      "description": "Customer feedback loops."
+    },
+    "/dealerSettings/{settingId}": {
+      "schema": "DealerSettings",
+      "description": "Atlantic Avenue operating coordinates & hours."
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Registered commercial fleet accounts."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Parts purchase requests in line for depot setup."
+    },
+    "/serviceAppointments/{appointmentId}": {
+      "schema": "ServiceAppointment",
+      "description": "Rig repair & diagnostics bay dispatch lines."
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Inbound fleet builds, inquiries and contacts CRM entries."
+    },
+    "/careers/{applicantId}": {
+      "schema": "CareerApplicant",
+      "description": "Active job candidates."
+    }
+  }
+}

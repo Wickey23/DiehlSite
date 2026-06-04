@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Wrench, ShieldCheck, Truck, Check, Calendar, ArrowRight, Play } from "lucide-react";
 import { DEALERSHIP_SERVICES } from "../data";
+import { useApp } from "../context/AppContext";
+import { decodeCommercialVin, VIN_EXAMPLES } from "../lib/vinDecoder";
 
 // Helper icon mapping
 const getIcon = (name: string) => {
@@ -22,6 +24,8 @@ const getIcon = (name: string) => {
 };
 
 export default function Services() {
+  const { currentCustomer, createServiceAppointment } = useApp();
+
   // Service estimator state
   const [selectedServiceType, setSelectedServiceType] = useState<"pm" | "repair" | "body">("pm");
   const [vehicleClass, setVehicleClass] = useState<"medium" | "heavy">("medium");
@@ -29,6 +33,51 @@ export default function Services() {
   const [addonInspection, setAddonInspection] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<"idle" | "success">("idle");
   const [bookingForm, setBookingForm] = useState({ companyName: "", contactPhone: "" });
+
+  // VIN state integration
+  const [vinQuery, setVinQuery] = useState("");
+  const [decodedVin, setDecodedVin] = useState<any>(null);
+  const [vinError, setVinError] = useState("");
+  const [selectedMethod, setSelectedMethod] = useState<"classification" | "vin">("classification");
+
+  const handleServiceVinLookup = (vinStr: string) => {
+    if (!vinStr) {
+      setVinError("Please enter a valid 17-digit commercial VIN.");
+      setDecodedVin(null);
+      return;
+    }
+    const decoded = decodeCommercialVin(vinStr);
+    setDecodedVin(decoded);
+    
+    if (decoded.isValid) {
+      setVinError("");
+      const isHeavyWord = 
+        decoded.model.toLowerCase().includes("heavy") || 
+        decoded.model.toLowerCase().includes("dump") || 
+        decoded.make.toLowerCase().includes("western star") ||
+        decoded.make.toLowerCase().includes("mack");
+      setVehicleClass(isHeavyWord ? "heavy" : "medium");
+    } else {
+      setVinError(decoded.notes || "Non-standard custom fleet code.");
+      const isHeavyWord = 
+        decoded.model.toLowerCase().includes("heavy") || 
+        decoded.model.toLowerCase().includes("dump") || 
+        decoded.make.toLowerCase().includes("western star") ||
+        decoded.make.toLowerCase().includes("mack");
+      setVehicleClass(isHeavyWord ? "heavy" : "medium");
+    }
+  };
+
+
+  // Autofill signed-in customer info
+  useEffect(() => {
+    if (currentCustomer) {
+      setBookingForm({
+        companyName: currentCustomer.companyName,
+        contactPhone: currentCustomer.phone
+      });
+    }
+  }, [currentCustomer]);
 
   const calculateEstimate = () => {
     let basePrice = 0;
@@ -56,11 +105,32 @@ export default function Services() {
   const handleBook = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookingForm.companyName || !bookingForm.contactPhone) return;
+
+    createServiceAppointment({
+      companyName: bookingForm.companyName,
+      customerName: currentCustomer ? currentCustomer.name : "Guest Rep",
+      phone: bookingForm.contactPhone,
+      email: currentCustomer ? currentCustomer.email : "guest@fleet.com",
+      customerId: currentCustomer ? currentCustomer.id : undefined,
+      vehicleClass: vehicleClass,
+      serviceType: selectedServiceType,
+      addons: [
+        ...(addonBrakes ? ["Rear Brakes Overhaul"] : []),
+        ...(addonInspection ? ["Official NYS DOT Safety Inspection"] : []),
+        ...(decodedVin ? [`VIN Verified: ${decodedVin.vin} (${decodedVin.year} ${decodedVin.make} ${decodedVin.model})`] : [])
+      ],
+      estimatedPrice: price,
+      duration: duration,
+      timeSlot: "11:00 AM"
+    });
+
     setBookingStatus("success");
     // Clear in 5 seconds
     setTimeout(() => {
       setBookingStatus("idle");
-      setBookingForm({ companyName: "", contactPhone: "" });
+      if (!currentCustomer) {
+        setBookingForm({ companyName: "", contactPhone: "" });
+      }
     }, 5000);
   };
 
@@ -118,10 +188,38 @@ export default function Services() {
         <div className="w-full rounded bg-[#0A1428] border border-white/10 shadow-2xl p-6 sm:p-10 lg:p-12 overflow-hidden grid lg:grid-cols-12 gap-10">
           {/* Estimate Configuration Controls */}
           <div className="lg:col-span-7 space-y-6">
-            <div>
-              <span className="text-xs uppercase tracking-[0.2em] font-black text-[#FBBF24]">// EST-RATE COUNTER</span>
-              <h3 className="text-2xl sm:text-3xl font-black text-white uppercase italic mt-1.5">Instant Fleet Rate Calculator</h3>
-              <p className="text-sm text-slate-400 mt-1 leading-relaxed">Configure your commercial vehicle specifications to build a clear maintenance quote.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+              <div>
+                <span className="text-xs uppercase tracking-[0.2em] font-black text-[#FBBF24]">// EST-RATE COUNTER</span>
+                <h3 className="text-2xl sm:text-3xl font-black text-white uppercase italic mt-1.5">Instant Fleet Rate Calculator</h3>
+                <p className="text-sm text-slate-400 mt-1 leading-relaxed">Configure your commercial vehicle specifications to build a clear maintenance quote.</p>
+              </div>
+
+              {/* Input Choice Control */}
+              <div className="flex bg-[#050B16] p-1.5 rounded border border-white/10 w-full sm:w-auto shrink-0 select-none">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod("classification")}
+                  className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded text-[10px] uppercase font-black tracking-wider transition-all cursor-pointer ${
+                    selectedMethod === "classification"
+                      ? "bg-[#FBBF24] text-[#0A1428]"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Manual Specs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod("vin")}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded text-[10px] uppercase font-black tracking-wider transition-all cursor-pointer ${
+                    selectedMethod === "vin"
+                      ? "bg-[#FBBF24] text-[#0A1428]"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  ★ Verify VIN
+                </button>
+              </div>
             </div>
 
             {/* Stage Selector */}
@@ -149,36 +247,140 @@ export default function Services() {
               </div>
             </div>
 
-            {/* Vehicle spec class */}
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-300 block">// Vehicle Classification</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setVehicleClass("medium")}
-                  className={`p-3 rounded text-left border transition-all cursor-pointer ${
-                    vehicleClass === "medium"
-                      ? "bg-black/50 border-[#FBBF24] text-white"
-                      : "bg-[#050B16] border-white/5 text-slate-400 hover:border-white/10"
-                  }`}
-                  id="est-vclass-medium"
-                >
-                  <p className="text-xs sm:text-sm font-black uppercase tracking-wider">Medium Duty (Class 4-6)</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1">Box trucks, Flatbeds, Isuzu NRR, Hino L6</p>
-                </button>
-                <button
-                  onClick={() => setVehicleClass("heavy")}
-                  className={`p-3 rounded text-left border transition-all cursor-pointer ${
-                    vehicleClass === "heavy"
-                      ? "bg-black/50 border-[#FBBF24] text-white"
-                      : "bg-[#050B16] border-white/5 text-slate-400 hover:border-white/10"
-                  }`}
-                  id="est-vclass-heavy"
-                >
-                  <p className="text-xs sm:text-sm font-black uppercase tracking-wider">Heavy Duty (Class 7-8 / Dump)</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1">Class 8 dumps, Cement mixers, Freightliner M2</p>
-                </button>
+            {selectedMethod === "classification" ? (
+              /* Vehicle spec class manual selection */
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-300 block">// Vehicle Classification</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setVehicleClass("medium")}
+                    className={`p-3 rounded text-left border transition-all cursor-pointer ${
+                      vehicleClass === "medium"
+                        ? "bg-black/50 border-[#FBBF24] text-white"
+                        : "bg-[#050B16] border-white/5 text-slate-400 hover:border-white/10"
+                    }`}
+                    id="est-vclass-medium"
+                  >
+                    <p className="text-xs sm:text-sm font-black uppercase tracking-wider">Medium Duty (Class 4-6)</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">Box trucks, Flatbeds, Isuzu NRR, Hino L6</p>
+                  </button>
+                  <button
+                    onClick={() => setVehicleClass("heavy")}
+                    className={`p-3 rounded text-left border transition-all cursor-pointer ${
+                      vehicleClass === "heavy"
+                        ? "bg-black/50 border-[#FBBF24] text-white"
+                        : "bg-[#050B16] border-white/5 text-slate-400 hover:border-white/10"
+                    }`}
+                    id="est-vclass-heavy"
+                  >
+                    <p className="text-xs sm:text-sm font-black uppercase tracking-wider">Heavy Duty (Class 7-8 / Dump)</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">Class 8 dumps, Cement mixers, Freightliner M2</p>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Smart VIN Decoder Field inside scheduling controls */
+              <div className="space-y-4 bg-black/35 p-5 rounded border border-white/5 text-left">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block tracking-widest">// AUTOMATIC CHASSIS DISCOVERY VIA VIN</span>
+                  <div className="flex gap-2 flex-col sm:flex-row">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        maxLength={17}
+                        value={vinQuery}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setVinQuery(val);
+                          if (val.length === 17) {
+                            handleServiceVinLookup(val);
+                          }
+                        }}
+                        placeholder="ENTER 17-DIGIT HEAVY DUTY VIN..."
+                        className="w-full px-4 py-2.5 bg-[#050B16] border border-white/10 rounded text-xs font-black uppercase tracking-widest text-[#FBBF24] placeholder:text-slate-600 focus:outline-none focus:border-[#FBBF24]"
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-500 font-bold">
+                        {vinQuery.length}/17
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleServiceVinLookup(vinQuery)}
+                      className="px-5 py-2.5 bg-[#0A1428] hover:bg-[#050B16] text-[#FBBF24] border border-[#FBBF24]/20 hover:border-[#FBBF24]/60 text-xs font-black uppercase tracking-wider rounded transition-colors cursor-pointer shrink-0"
+                    >
+                      Verify Spec
+                    </button>
+                  </div>
+                </div>
+
+                {/* Preloaded test samples */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-mono font-semibold text-slate-500 uppercase block tracking-wider">
+                    🧪 CHOOSE REPRESENTATIVE TEST VIN IN THE NYC REGION:
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {VIN_EXAMPLES.map((example) => (
+                      <button
+                        key={example.vin}
+                        type="button"
+                        onClick={() => {
+                          setVinQuery(example.vin);
+                          handleServiceVinLookup(example.vin);
+                        }}
+                        className={`p-1.5 text-left bg-black/50 hover:bg-black/80 border rounded relative select-none cursor-pointer transition-all overflow-hidden ${
+                          vinQuery === example.vin ? "border-[#FBBF24] text-[#FBBF24]" : "border-white/5 text-slate-400"
+                        }`}
+                      >
+                        <span className="font-black block uppercase tracking-wider text-[8px] text-white truncate">
+                          {example.label.split(" (")[0]}
+                        </span>
+                        <span className="font-mono text-[8.5px] text-[#FBBF24] block mt-0.5 truncate">
+                          {example.vin}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Decoded Output Summary Panel */}
+                {decodedVin && (
+                  <div className="mt-3 p-4 rounded bg-[#050B16] border border-emerald-500/10 text-xs leading-relaxed animate-fade-in text-left">
+                    <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-mono font-black block mb-2">✔ DECIPHERMENT COMPLETED</span>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Mapped Blueprint</span>
+                        <span className="font-bold text-white uppercase text-[12px] block mt-0.5">
+                          {decodedVin.year} {decodedVin.make} {decodedVin.model}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Assigned Bay Tier</span>
+                        <span className="font-mono text-[#FBBF24] block tracking-wide font-black uppercase mt-0.5">
+                          {vehicleClass === "heavy" ? "Class 7-8 Heavy Diagnostic Track" : "Class 4-6 Medium Service Lane"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 text-[11px] font-medium text-slate-350 mt-3 pt-2.5 border-t border-white/5">
+                      <div>
+                        <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Drivetrain Specification</span>
+                        <span className="font-semibold text-white uppercase">{decodedVin.engine}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block uppercase font-black text-[9px] font-mono">Automation Gearbox</span>
+                        <span className="font-semibold text-white uppercase">{decodedVin.transmission}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {vinError && !decodedVin && (
+                  <div className="p-3 bg-rose-950/20 border border-rose-500/20 text-rose-300 font-bold text-xs rounded uppercase tracking-wider">
+                    ⚠ {vinError}
+                  </div>
+                )}
+              </div>
+            )}
+
 
             {/* Addons Selection */}
             <div className="space-y-3">
@@ -266,8 +468,13 @@ export default function Services() {
               </form>
 
               {bookingStatus === "success" && (
-                <div className="p-3 border border-emerald-500 bg-emerald-500/10 text-emerald-400 text-xs text-center font-bold uppercase tracking-wider leading-relaxed">
-                  ✔ Booking Request Received! Sal or Marc from our Richmond Hill shop will call you within 15 minutes to confirm.
+                <div className="p-3 border border-emerald-500 bg-emerald-500/10 text-emerald-400 text-xs text-center font-bold uppercase tracking-wider space-y-1.5 leading-relaxed">
+                  <p>✔ Booking Request Received! Sal or Marc from our Richmond Hill shop will call you within 15 minutes to confirm.</p>
+                  {decodedVin && (
+                    <p className="text-[10px] text-[#FBBF24] lowercase font-mono tracking-wide font-medium">
+                      linked specs: {decodedVin.year} {decodedVin.make} {decodedVin.model} (VIN: {decodedVin.vin})
+                    </p>
+                  )}
                 </div>
               )}
             </div>

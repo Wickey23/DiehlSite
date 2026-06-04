@@ -8,7 +8,7 @@ import { Phone, Mail, MapPin, Send, HelpCircle, Shield, Clock, PlusSquare } from
 import { useApp } from "../context/AppContext";
 
 export default function ContactSection() {
-  const { settings } = useApp();
+  const { settings, addLead } = useApp();
   const [formData, setFormData] = useState({
     name: "",
     companyName: "",
@@ -25,6 +25,18 @@ export default function ContactSection() {
       setStatus("error");
       return;
     }
+
+    // Push form submit directly to CRM leads list
+    addLead({
+      name: formData.name,
+      companyName: formData.companyName || "N/A",
+      email: formData.email || "N/A",
+      phone: formData.phone,
+      message: formData.message,
+      source: "Contact Form",
+      details: `Department desk selected: ${formData.department}`
+    });
+
     setStatus("success");
     // Clear out
     setTimeout(() => {

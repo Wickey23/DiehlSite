@@ -5,8 +5,8 @@
 
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { CommercialTruck, PartItem, Order, DealerSettings } from "../types";
-import { X, Plus, Trash2, Edit2, ShieldAlert, FileText, CheckCircle, Save, Settings, Package, Truck, Phone, BarChart2, RefreshCw, Upload, Download, Lock, LogOut } from "lucide-react";
+import { CommercialTruck, PartItem, Order, DealerSettings, Lead } from "../types";
+import { X, Plus, Trash2, Edit2, ShieldAlert, FileText, CheckCircle, Save, Settings, Package, Truck, Phone, BarChart2, RefreshCw, Upload, Download, Lock, LogOut, Wrench, Users } from "lucide-react";
 import { motion } from "motion/react";
 import * as XLSX from "xlsx";
 
@@ -22,6 +22,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     testimonials,
     orders,
     settings,
+    serviceAppointments,
+    leads,
+    careers,
     addTruck,
     updateTruck,
     deleteTruck,
@@ -31,10 +34,23 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     updateSettings,
     updateOrderStatus,
     deleteOrder,
+    updateServiceAppointmentStatus,
     resetToFactoryDefaults,
+    addLead,
+    updateLeadStatus,
+    updateLeadNotes,
+    deleteLead,
+    deleteCareerApplicant,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"trucks" | "parts" | "settings" | "orders" | "stats">("trucks");
+  const [activeTab, setActiveTab] = useState<"trucks" | "parts" | "settings" | "orders" | "stats" | "services" | "leads" | "careers">("trucks");
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  const careerApplicants = careers;
+
+  const deleteApplicant = (id: string) => {
+    deleteCareerApplicant(id);
+    triggerNotification("Applicant purged from directory.");
+  };
 
   // Admin security states
   const [isAdminAuthorized, setIsAdminAuthorized] = useState(() => {
@@ -165,6 +181,51 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   // Editing states
   const [editingTruck, setEditingTruck] = useState<CommercialTruck | null>(null);
   const [editingPart, setEditingPart] = useState<PartItem | null>(null);
+
+  // Drag and drop states for truck images
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      triggerNotification("Error: Selected file is not an image.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setTruckForm((prev) => ({ ...prev, imageUrl: dataUrl }));
+        triggerNotification("Image asset processed and cached.");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleImageFile(file);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageFile(file);
+    }
+  };
 
   // New item form states - Trucks
   const [truckForm, setTruckForm] = useState({
@@ -488,13 +549,16 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           </div>
         </div>
 
-        {/* Tab Selection */}
+         {/* Tab Selection */}
         <div className="flex flex-wrap border-b border-white/5 bg-[#050B16] px-4 py-1 gap-1 select-none">
           {[
             { id: "trucks", label: "Commercial Rigs", icon: Truck },
             { id: "parts", label: "Parts Registry", icon: Package },
             { id: "settings", label: "Dealer Identity", icon: Settings },
             { id: "orders", label: "Requisitions Ledger", icon: FileText, count: orders.length },
+            { id: "services", label: "Service Bookings", icon: Wrench, count: (serviceAppointments || []).length },
+            { id: "leads", label: "CRM Leads", icon: Users, count: (leads || []).length },
+            { id: "careers", label: "Hiring Applicants", icon: Users, count: careerApplicants.length },
             { id: "stats", label: "Terminal Monitor", icon: BarChart2 }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -754,15 +818,66 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   </div>
 
                   <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Showcase Image Path/URL</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="/src/assets/images/diehls_hero_truck_1780493334702.png"
-                      value={truckForm.imageUrl}
-                      onChange={(e) => setTruckForm({ ...truckForm, imageUrl: e.target.value })}
-                      className="w-full px-2.5 py-2 bg-[#0A1428] border border-white/10 rounded text-xs text-slate-350 focus:outline-none focus:border-[#FBBF24]"
-                    />
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Showcase Image & Asset Upload</label>
+                    
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => document.getElementById("truck-image-uploader")?.click()}
+                      className={`relative min-h-[95px] flex flex-col items-center justify-center border-2 border-dashed rounded p-3 text-center cursor-pointer select-none transition-all duration-200 ${
+                        isDragOver 
+                          ? "border-[#FBBF24] bg-[#FBBF24]/5" 
+                          : "border-white/10 hover:border-white/20 bg-[#0A1428]"
+                      }`}
+                    >
+                      <input 
+                        type="file"
+                        id="truck-image-uploader"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      
+                      {truckForm.imageUrl ? (
+                        <div className="w-full flex items-center gap-3 text-left">
+                          <img 
+                            src={truckForm.imageUrl} 
+                            alt="Preview" 
+                            className="w-12 h-12 object-cover rounded border border-white/10 shrink-0 bg-black/40"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/src/assets/images/diehls_hero_truck_1780493334702.png";
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[10px] text-[#FBBF24] font-black uppercase tracking-wider block">Image Asset Configured</span>
+                            <span className="text-[9px] text-slate-400 block truncate font-mono mt-0.5">{truckForm.imageUrl.startsWith("data:") ? "Base64 Compressed Data URL" : truckForm.imageUrl}</span>
+                            <span className="text-[8px] text-slate-500 uppercase tracking-widest font-black block mt-0.5">// CLICK OR DRAG TO OVERWRITE</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <Upload className="w-5 h-5 text-slate-500 mx-auto" />
+                          <div className="leading-snug">
+                            <span className="text-[10px] text-slate-350 font-black uppercase tracking-wider block">Drag & Drop Truck Photo</span>
+                            <span className="text-[9px] text-slate-500 font-bold uppercase mt-0.5 block">Or Click to Browse Local Desk Assets</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="text-[8px] font-black uppercase tracking-wider text-slate-500 block mb-1">// Manually Edit Image URL / Path String</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="/src/assets/images/diehls_hero_truck_1780493334702.png"
+                        value={truckForm.imageUrl}
+                        onChange={(e) => setTruckForm({ ...truckForm, imageUrl: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-[#050B16] border border-white/10 rounded text-[10.5px] font-mono text-slate-350 focus:outline-none focus:border-[#FBBF24]"
+                      />
+                    </div>
+
                     <div className="flex gap-2.5 mt-2 flex-wrap items-center">
                       <span className="text-[9px] text-slate-500 font-bold uppercase font-sans">Quick Picker:</span>
                       {[
@@ -1258,6 +1373,553 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">No Checkouts or Order Logs Yet</h4>
                     <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-relaxed">Purchases from the parts catalog checkout form will compile here immediately in real time.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: SERVICE APPOINTMENTS LEDGER */}
+          {activeTab === "services" && (
+            <div className="space-y-4 text-left">
+              <div className="flex justify-between items-center select-none">
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#FBBF24]">// Service Appointments & Bay Ledger ({(serviceAppointments || []).length})</h3>
+                <span className="text-[10px] text-slate-500 font-bold uppercase font-mono">Manage technician assignments & live bay servicing status</span>
+              </div>
+
+              {(serviceAppointments || []).length > 0 ? (
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                  {serviceAppointments.map((app) => (
+                    <div
+                      key={app.id}
+                      className="p-5 rounded bg-black/40 border border-white/10 space-y-4 text-xs hover:border-white/20 transition-all text-left animate-in fade-in"
+                      id={`admin-service-card-${app.id}`}
+                    >
+                      {/* Appointment Header */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-white/5">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-amber-400 font-mono">{app.id}</span>
+                            <span className="text-[10px] text-slate-500 font-semibold">{app.date}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-305 block uppercase font-black truncate mt-1">
+                            {app.companyName} ({app.customerName})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-0.5 bg-black/60 border border-white/5 rounded text-[10px] font-black tracking-wider uppercase text-slate-400">
+                            {app.vehicleClass === "heavy" ? "Heavy-Duty Rig" : "Medium-Duty Truck"}
+                          </span>
+                          
+                          {/* Service Status Controller */}
+                          <select
+                            value={app.status}
+                            onChange={(e) => {
+                              updateServiceAppointmentStatus(app.id, e.target.value as any);
+                              triggerNotification(`Appointment ${app.id} status modified to: ${e.target.value}!`);
+                            }}
+                            className="px-2.5 py-1 bg-[#0A1428] border border-white/10 rounded text-[10px] font-black uppercase tracking-wider text-amber-400 focus:outline-none focus:border-amber-400 cursor-pointer"
+                          >
+                            <option value="Scheduling">Scheduling</option>
+                            <option value="Diagnosing">Diagnosing</option>
+                            <option value="Parts Sourcing">Parts Sourcing</option>
+                            <option value="Bay Servicing">Bay Servicing</option>
+                            <option value="Ready for Pickup">Ready for Pickup</option>
+                            <option value="Archived & Dispatched">Archived & Dispatched</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Info grid & details breakdown */}
+                      <div className="grid md:grid-cols-12 gap-4">
+                        <div className="md:col-span-8 space-y-1.5 text-left uppercase">
+                          <p className="text-[10px] text-slate-500 font-black tracking-widest block mb-0.5">// REBUILD WORK ORDER DETAIL</p>
+                          <div className="flex justify-between p-2 rounded bg-black/20 text-[11px] font-bold">
+                            <span className="text-slate-400">Core Service Category:</span>
+                            <span className="text-white font-black">{app.serviceType === "pm" ? "Preventative Maintenance" : app.serviceType === "repair" ? "Heavy Diagnostics & Repair" : "Collision & Body Mount"}</span>
+                          </div>
+                          {app.addons && app.addons.length > 0 && (
+                            <div className="flex flex-col p-2 rounded bg-black/20 text-[11px] font-bold">
+                              <span className="text-slate-400 mb-1">Addon Special Services:</span>
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {app.addons.map((add, idx) => (
+                                  <span key={idx} className="bg-amber-955/30 text-amber-300 border border-amber-900/40 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                    {add}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex justify-between p-2 rounded bg-black/20 text-[11px] font-bold">
+                            <span className="text-slate-400">Assigned Technician:</span>
+                            <span className="text-white">{app.assignedTechnician || "Marc Davis"}</span>
+                          </div>
+                          <div className="flex justify-between p-2 rounded bg-black/20 text-[11px] font-bold">
+                            <span className="text-slate-400">Bay Positions:</span>
+                            <span className="text-white font-mono">{app.bayNumber || "Bay #4"}</span>
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-4 bg-[#050B16] p-4 rounded border border-white/5 space-y-3 font-bold leading-normal text-left text-[11px]">
+                          <span className="text-[9px] text-slate-500 font-black tracking-widest block uppercase">// CONTACT & SPECIFICATIONS</span>
+                          <p className="text-white">Contact Callback: <strong className="text-slate-350">{app.phone}</strong></p>
+                          <p className="text-slate-350 lowercase normal-case">Email: {app.email}</p>
+                          <p className="text-white">Estimated Duration: <strong className="text-slate-350">{app.duration}</strong></p>
+                          <hr className="border-white/5" />
+                          <div className="flex justify-between font-black text-xs text-amber-400">
+                            <span>Diagnostic base invoice:</span>
+                            <span className="font-mono">${app.estimatedPrice.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Technical Comment Logs */}
+                      <div className="bg-black/25 border border-white/5 rounded p-3 text-[10px] font-mono text-slate-400 leading-relaxed text-left">
+                        <span className="text-[8px] text-slate-500 uppercase font-black block mb-1 tracking-widest">// ACTIVE INTERNAL SERVICE LOGS</span>
+                        <p className="text-[#FBBF24]">STATUS NOTES: {app.statusNotes || "Appointment logged. Awaiting technician scanner."}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12 text-center rounded bg-black/35 border border-white/10 select-none space-y-3">
+                  <Wrench className="w-9 h-9 text-amber-500 mx-auto opacity-70 animate-pulse" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">No Services Scheduled Yet</h4>
+                    <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-relaxed">Service requests from the estimator tool or corporate accounts will populate here instantly inside the bay controller.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: CRM LEADS TRACKER */}
+          {activeTab === "leads" && (
+            <div className="space-y-6">
+              {/* Top Filters & Controls */}
+              <div className="p-4 bg-black/25 border border-white/5 rounded-md flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="flex flex-col select-none">
+                  <span className="text-[10px] font-black uppercase text-[#FBBF24] tracking-widest">// CRM PIPELINE LEAD TRACKING ({leads.length})</span>
+                  <span className="text-[9px] text-slate-500 uppercase font-bold mt-0.5">Route submissions, schedule phone dials and log follow-ups</span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
+                  {/* Search input */}
+                  <input
+                    type="text"
+                    placeholder="Search by name/company/email..."
+                    value={leadSearchQuery}
+                    onChange={(e) => setLeadSearchQuery(e.target.value)}
+                    className="px-3 py-1.5 bg-[#0A1428] border border-white/10 rounded text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-[#FBBF24] uppercase font-bold tracking-wider text-[10px]"
+                  />
+
+                  {/* Excel Export */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const dataToExport = leads.map(l => ({
+                          ID: l.id,
+                          Name: l.name,
+                          Company: l.companyName,
+                          Phone: l.phone,
+                          Email: l.email,
+                          Source: l.source,
+                          Status: l.status,
+                          Inquiry: l.message || "",
+                          Specs: l.details || "",
+                          Notes: l.notes || "",
+                          Date: l.date
+                        }));
+                        const wb = XLSX.utils.book_new();
+                        const ws = XLSX.utils.json_to_sheet(dataToExport);
+                        XLSX.utils.book_append_sheet(wb, ws, "CRM Sales Leads");
+                        XLSX.writeFile(wb, "diehls_crm_leads.xlsx");
+                        triggerNotification("Successfully exported CRM leads database!");
+                      } catch (err) {
+                        console.error(err);
+                        triggerNotification("Failed to export leads.");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[10px] font-black uppercase tracking-wider text-[#FBBF24] flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export to Excel</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid content split: Form (Left 1/3) & Leads Cards (Right 2/3) */}
+              <div className="grid lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Form to manual add a CRM lead */}
+                <div className="lg:col-span-4 bg-black/35 rounded border border-white/5 p-5 space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-white/5 select-none">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <h4 className="text-xs font-black uppercase tracking-widest text-white">
+                      File Manual Lead Card
+                    </h4>
+                  </div>
+
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const f = e.currentTarget;
+                      const d = new FormData(f);
+                      const name = d.get("name") as string;
+                      const email = d.get("email") as string;
+                      const phone = d.get("phone") as string;
+                      const company = d.get("companyName") as string;
+                      const source = d.get("source") as any;
+                      const status = d.get("status") as any;
+                      const message = d.get("message") as string;
+                      const notes = d.get("notes") as string;
+
+                      if (!name || !phone) {
+                        triggerNotification("Name and phone number are required.");
+                        return;
+                      }
+
+                      addLead({
+                        name,
+                        companyName: company || "Independent",
+                        email: email || "N/A",
+                        phone,
+                        source,
+                        status,
+                        message,
+                        notes
+                      });
+
+                      triggerNotification("Manual lead card registered successfully!");
+                      f.reset();
+                    }}
+                    className="space-y-3"
+                  >
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Lead Name *</label>
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        placeholder="Danny Castano"
+                        className="w-full px-2.5 py-2 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24] font-black uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Company Svc</label>
+                      <input
+                        type="text"
+                        name="companyName"
+                        placeholder="Richmond Hill Movers"
+                        className="w-full px-2.5 py-2 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24] font-black uppercase"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// E-mail address</label>
+                        <input
+                          type="email"
+                          name="email"
+                          placeholder="mover@richmond.com"
+                          className="w-full px-2.5 py-2 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Tel Phone *</label>
+                        <input
+                          type="text"
+                          name="phone"
+                          required
+                          placeholder="(718) 555-8822"
+                          className="w-full px-2.5 py-2 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24] font-black uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Lead Source</label>
+                        <select
+                          name="source"
+                          defaultValue="Quick Inquiry"
+                          className="w-full px-2 py-2 bg-[#0A1428] border border-white/10 rounded text-[11px] text-slate-300 font-extrabold focus:outline-none focus:border-[#FBBF24]"
+                        >
+                          <option value="Quick Inquiry">Quick Inquiry</option>
+                          <option value="Contact Form">Contact Form</option>
+                          <option value="Custom Build">Custom Build</option>
+                          <option value="Service Estimator">Service Estimator</option>
+                          <option value="Parts RFQ">Parts RFQ</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Pipe Status</label>
+                        <select
+                          name="status"
+                          defaultValue="New"
+                          className="w-full px-2 py-2 bg-[#0A1428] border border-white/10 rounded text-[11px] text-[#FBBF24] font-black focus:outline-none focus:border-[#FBBF24]"
+                        >
+                          <option value="New">New</option>
+                          <option value="Contacted">Contacted</option>
+                          <option value="Qualified">Qualified</option>
+                          <option value="Lost">Lost</option>
+                          <option value="Converted">Converted</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Requirements Inquiry details</label>
+                      <textarea
+                        name="message"
+                        rows={2}
+                        placeholder="Inbound lead requesting quick lease rates on medium boxes..."
+                        className="w-full px-2 py-1.5 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24]"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">// Follow-up Notes comment</label>
+                      <textarea
+                        name="notes"
+                        rows={2}
+                        placeholder="Need pricing spreadsheet by Friday..."
+                        className="w-full px-2 py-1.5 bg-[#0A1428] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#FBBF24]"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-[#FBBF24] text-[#0A1428] hover:bg-[#FBBF24]/90 rounded text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer shadow-md text-center"
+                    >
+                      File CRM Entry
+                    </button>
+                  </form>
+                </div>
+
+                {/* Right Leads Cards Panel */}
+                <div className="lg:col-span-8 space-y-4">
+                  {leads.length === 0 ? (
+                    <div className="p-12 text-center rounded bg-black/20 border border-white/5 space-y-3">
+                      <Users className="w-10 h-10 text-slate-600 mx-auto animate-pulse" />
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">No Leads Loaded in CRM Sheet</h4>
+                        <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-relaxed">Submit the contact inquiry form or design custom vehicles to populate lead registries.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5 max-h-[620px] overflow-y-auto pr-2">
+                      {leads
+                        .filter(l => {
+                          if (!leadSearchQuery) return true;
+                          const q = leadSearchQuery.toLowerCase();
+                          return (
+                            l.name.toLowerCase().includes(q) ||
+                            (l.companyName && l.companyName.toLowerCase().includes(q)) ||
+                            (l.email && l.email.toLowerCase().includes(q)) ||
+                            l.phone.includes(q)
+                          );
+                        })
+                        .map((lead) => {
+                          const statusColors = {
+                            New: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                            Contacted: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                            Qualified: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                            Lost: "bg-red-500/10 text-red-400 border-red-500/20",
+                            Converted: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          };
+
+                          return (
+                            <div
+                              key={lead.id}
+                              className="p-4 rounded bg-[#050B16] border border-white/10 hover:border-white/20 transition-all flex flex-col md:flex-row md:items-start justify-between gap-4 text-xs"
+                            >
+                              <div className="space-y-3 min-w-0 flex-1">
+                                {/* Header details */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-[10px] font-black text-white uppercase tracking-wider">
+                                    {lead.name}
+                                  </span>
+                                  {lead.companyName && lead.companyName !== "N/A" && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-black/40 text-slate-450 border border-white/5 uppercase font-bold">
+                                      🏢 {lead.companyName}
+                                    </span>
+                                  )}
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 font-mono">
+                                    SOURCE: {lead.source}
+                                  </span>
+                                  <span className="text-[8.5px] text-slate-500 font-mono ml-auto">
+                                    Received {lead.date}
+                                  </span>
+                                </div>
+
+                                {/* Contact Information */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 py-1.5 border-y border-white/5 select-text">
+                                  <div className="text-[10px]">
+                                    <span className="text-slate-500 block text-[7px] uppercase font-bold tracking-widest">// DIRECT DIAL</span>
+                                    <a href={`tel:${lead.phone}`} className="text-white hover:text-[#FBBF24] font-black font-mono transition-colors">
+                                      {lead.phone}
+                                    </a>
+                                  </div>
+                                  <div className="text-[10px]">
+                                    <span className="text-slate-500 block text-[7px] uppercase font-bold tracking-widest">// EMAIL INBOX</span>
+                                    <a href={`mailto:${lead.email}`} className="text-white hover:text-[#FBBF24] font-medium font-mono text-[9.5px] truncate block max-w-[150px] transition-colors">
+                                      {lead.email}
+                                    </a>
+                                  </div>
+                                  <div className="text-[10px] col-span-2 md:col-span-1">
+                                    <span className="text-slate-500 block text-[7px] uppercase font-bold tracking-widest">// PIPELINE GATE</span>
+                                    <select
+                                      value={lead.status}
+                                      onChange={(e) => {
+                                        updateLeadStatus(lead.id, e.target.value as any);
+                                        triggerNotification(`Lead "${lead.name}" pipeline updated to ${e.target.value}!`);
+                                      }}
+                                      className="p-0.5 px-2.5 bg-[#0A1428] border border-white/10 rounded text-[9.5px] font-black uppercase text-[#FBBF24] tracking-wider focus:outline-none focus:border-[#FBBF24] cursor-pointer"
+                                    >
+                                      <option value="New">New Lead</option>
+                                      <option value="Contacted">Active Contacted</option>
+                                      <option value="Qualified">Qualified Route</option>
+                                      <option value="Lost">Lost Pipeline</option>
+                                      <option value="Converted">Converted Account</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {/* Inquiry Message Details */}
+                                {lead.message && (
+                                  <div className="p-2.5 bg-black/40 border border-white/5 rounded text-[10.5px] text-slate-350 leading-relaxed font-sans mt-1">
+                                    <p className="text-[7.5px] font-black text-slate-500 uppercase tracking-widest mb-1">// CLIENT INQUIRY DESCRIPTION</p>
+                                    {lead.message}
+                                  </div>
+                                )}
+
+                                {/* Custom Config Details */}
+                                {lead.details && (
+                                  <div className="p-2.5 bg-amber-950/10 border border-amber-500/10 rounded text-[10px] text-amber-300 leading-normal font-mono uppercase mt-1">
+                                    <p className="text-[7.5px] font-black text-amber-500 uppercase tracking-widest mb-1">// CUSTOM RIG MATRIX SPECIFICATIONS</p>
+                                    {lead.details}
+                                  </div>
+                                )}
+
+                                {/* Interactive Inline Notes */}
+                                <div className="space-y-1 mt-1 font-sans">
+                                  <p className="text-[7.5px] font-black text-slate-500 uppercase block mt-2">// DEALER STAFF COMMENTARY & CALL NOTES</p>
+                                  <textarea
+                                    defaultValue={lead.notes || ""}
+                                    onBlur={(e) => {
+                                      updateLeadNotes(lead.id, e.target.value);
+                                    }}
+                                    placeholder="Type notes (e.g., 'Spoke with client, scheduled a phone demo...'). Click outside box to auto-save."
+                                    className="w-full p-2 bg-[#0A1428] border border-white/5 rounded text-[10.5px] text-slate-300 focus:border-[#FBBF24]/30 focus:outline-none placeholder-slate-700 leading-relaxed font-sans"
+                                    rows={1.5}
+                                  />
+                                  <span className="text-[7.5px] text-slate-500 uppercase block font-semibold text-right leading-none">💬 Notes auto-save when focus exits</span>
+                                </div>
+                              </div>
+
+                              {/* Actions Right */}
+                              <div className="flex md:flex-col justify-end items-end gap-2 shrink-0 select-none">
+                                <span className={`px-2 py-1 rounded-sm border text-[9px] font-mono uppercase tracking-wider font-extrabold ${statusColors[lead.status]}`}>
+                                  {lead.status}
+                                </span>
+
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Scrub this lead from active CRM pipeline?\n"${lead.name}"`)) {
+                                      deleteLead(lead.id);
+                                      triggerNotification(`Lead index of ${lead.name} deleted.`);
+                                    }
+                                  }}
+                                  className="p-2 rounded bg-red-950/20 border border-red-900/35 text-red-400 hover:bg-red-400 hover:text-white cursor-pointer text-[10px] font-black flex items-center gap-1 mt-2 uppercase text-right md:-mr-1 transition-colors"
+                                  title="Scrub Lead Entry"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* TAB: CAREERS APPLICATIONS (DEALERSHIP HIRING DESK) */}
+          {activeTab === "careers" && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center select-none">
+                <div className="flex flex-col">
+                  <span className="text-xs font-black uppercase text-[#FBBF24] tracking-widest">// ACTIVE APPLICANT RESPONSES ({careerApplicants.length})</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-black mt-0.5">ASE mechanics, diesel supervisors, parts team and sales executives</span>
+                </div>
+                <span className="text-[10px] text-slate-450 uppercase font-mono font-bold">Local Richmond Hill talent pipeline</span>
+              </div>
+
+              {careerApplicants.length > 0 ? (
+                <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2">
+                  {careerApplicants.map((appl: any) => (
+                    <div
+                      key={appl.id}
+                      className="p-5 rounded bg-black/45 border border-white/10 space-y-4 text-xs hover:border-[#FBBF24]/30 transition-all text-left"
+                    >
+                      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-3 border-b border-white/5">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base font-black text-white uppercase italic">{appl.name}</span>
+                            <span className="px-2 py-0.5 rounded-sm bg-[#FBBF24]/10 border border-[#FBBF24]/30 text-[#FBBF24] text-[9px] font-black uppercase font-mono">
+                              {appl.role}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-450 uppercase font-bold mt-1 block">
+                            Experience Level: <strong className="text-slate-350">{appl.experience}</strong>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2.5 shrink-0 select-none">
+                          <span className="text-[10px] text-slate-500 font-bold font-mono">Submitted: {appl.date}</span>
+                          <button
+                            onClick={() => deleteApplicant(appl.id)}
+                            className="p-1 px-2.5 rounded bg-red-950/20 border border-red-900/45 text-red-300 hover:bg-red-400 hover:text-white transition-colors text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Purge Application</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[8px] font-black uppercase text-slate-500 tracking-widest block">// PROFESSIONAL BACKGROUND & CERTIFICATIONS</span>
+                        <div className="p-3.5 rounded bg-[#050B16] border border-white/5 font-mono text-[11px] text-slate-350 italic leading-relaxed whitespace-pre-wrap select-text">
+                          "{appl.pitch}"
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2 bg-[#050B16]/40 p-3 rounded text-[11.5px] font-black uppercase">
+                        <div>
+                          <span className="text-slate-500 text-[8px] block tracking-wide">// DIRECT DIRECTORY DIAL</span>
+                          <span className="text-[#FBBF24] font-mono select-text">{appl.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-500 block tracking-wide">// TRANSMISSION CLOUD INDEX</span>
+                          <span className="text-white select-text font-mono text-[10.5px]">{appl.id}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center rounded bg-black/40 border border-white/5 select-none space-y-3">
+                  <span className="text-3xl block">📁</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">No Applications Handled Yet</h4>
+                    <p className="text-[10px] text-slate-500 mt-1 max-w-[280px] mx-auto leading-relaxed uppercase font-bold">Applications submitted from the Careers subsection on our Atlantic Avenue panel will manifest here instantly.</p>
                   </div>
                 </div>
               )}

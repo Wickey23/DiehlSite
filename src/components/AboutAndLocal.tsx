@@ -6,8 +6,10 @@
 import React, { useState } from "react";
 import { Star, Shield, HelpCircle, Award, Compass, MapPin } from "lucide-react";
 import { NY_TESTIMONIALS, IMAGE_SERVICE_BAY } from "../data";
+import { useApp } from "../context/AppContext";
 
 export default function AboutAndLocal() {
+  const { addCareerApplicant } = useApp();
   const [activeReviewIdx, setActiveReviewIdx] = useState(0);
   const [careerForm, setCareerForm] = useState({
     name: "",
@@ -20,11 +22,7 @@ export default function AboutAndLocal() {
 
   const handleCareerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const existingAppsJson = localStorage.getItem("dtw_career_applications") || "[]";
-    const existingApps = JSON.parse(existingAppsJson);
-    const newApp = { ...careerForm, id: `app-${Date.now()}`, date: new Date().toLocaleDateString() };
-    existingApps.push(newApp);
-    localStorage.setItem("dtw_career_applications", JSON.stringify(existingApps));
+    addCareerApplicant(careerForm);
 
     setCareerApplied(true);
     setCareerForm({
@@ -72,7 +70,7 @@ export default function AboutAndLocal() {
             </p>
 
             {/* Local Values grid block */}
-            <div className="grid sm:grid-cols-2 gap-5 text-left pt-2 pb-2">
+            <div id="dealer-info-section" className="grid sm:grid-cols-2 gap-5 text-left pt-2 pb-2">
               <div className="p-4 rounded bg-[#0A1428] border border-white/10 space-y-2">
                 <div className="flex items-center gap-2">
                   <Award className="w-4.5 h-4.5 text-[#FBBF24]" />
@@ -138,7 +136,7 @@ export default function AboutAndLocal() {
           </div>
 
           {/* Careers & Job Openings Block */}
-          <div className="mt-16 pt-12 border-t border-white/5 grid md:grid-cols-12 gap-8 select-none">
+          <div id="careers-section" className="scroll-mt-24 mt-16 pt-12 border-t border-white/5 grid md:grid-cols-12 gap-8 select-none">
             <div className="md:col-span-5 space-y-4">
               <span className="text-[10px] uppercase font-mono font-black text-[#FBBF24] tracking-[0.3em]">// WE ARE HIRING</span>
               <h3 className="text-xl sm:text-3xl font-black text-white uppercase italic leading-none">Join the Diehl's Team</h3>

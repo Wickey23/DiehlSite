@@ -105,3 +105,39 @@ export interface DealerSettings {
   heroHeading: string;
   heroSubheading: string;
 }
+
+export interface ServiceAppointment {
+  id: string;
+  customerId?: string;
+  companyName: string;
+  customerName: string;
+  phone: string;
+  email: string;
+  vehicleClass: "medium" | "heavy";
+  serviceType: "pm" | "repair" | "body";
+  addons: string[];
+  estimatedPrice: number;
+  duration: string;
+  status: "Scheduling" | "Diagnosing" | "Parts Sourcing" | "Bay Servicing" | "Ready for Pickup" | "Archived & Dispatched";
+  date: string;
+  timeSlot?: string;
+  bayNumber?: string;
+  assignedTechnician?: string;
+  statusNotes?: string;
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  companyName: string;
+  phone: string;
+  email: string;
+  message?: string;
+  source: "Contact Form" | "Custom Build" | "Service Estimator" | "Parts RFQ" | "Quick Inquiry";
+  status: "New" | "Contacted" | "Qualified" | "Lost" | "Converted";
+  date: string;
+  details?: string;
+  notes?: string;
+}
+
+

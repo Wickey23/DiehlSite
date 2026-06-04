@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { Hammer, Sparkles, Check, Send, Award, Layers } from "lucide-react";
 import { IMAGE_CUSTOM_BUILD } from "../data";
+import { useApp } from "../context/AppContext";
 
 interface Chassis {
   id: string;
@@ -58,11 +59,12 @@ const COLORS = [
 ];
 
 export default function BuildCustomizer() {
+  const { addLead } = useApp();
   const [selectedChassis, setSelectedChassis] = useState<Chassis>(CHASSIS_SELECTION[0]);
   const [selectedBody, setSelectedBody] = useState<BodyOption>(BODY_SELECTION[1]);
   const [activeAccIds, setActiveAccIds] = useState<string[]>(["ac-box", "ac-light"]);
   const [paintColor, setPaintColor] = useState(COLORS[2]);
-  const [customForm, setCustomForm] = useState({ buyerName: "", buyerEmail: "", notes: "" });
+  const [customForm, setCustomForm] = useState({ buyerName: "", buyerEmail: "", phone: "", notes: "" });
   const [sentStatus, setSentStatus] = useState(false);
 
   const toggleAccessory = (id: string) => {
@@ -87,10 +89,25 @@ export default function BuildCustomizer() {
   const handleBuildSubmission = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customForm.buyerName || !customForm.buyerEmail) return;
+
+    // Compile dynamic upfit details for the CRM Lead message
+    const accList = getActiveAccessories().map(a => a.name).join(", ");
+    const buildDetails = `Chassis: ${selectedChassis.name} (${selectedChassis.weightGvwr}) | Body: ${selectedBody.name} | Accessories: [${accList || "None"}] | Paint: ${paintColor.name}`;
+
+    addLead({
+      name: customForm.buyerName,
+      companyName: "Custom Self-Spec Build",
+      email: customForm.buyerEmail,
+      phone: customForm.phone || "Requested Contact",
+      message: customForm.notes || "No extra requirements described.",
+      source: "Custom Build",
+      details: buildDetails
+    });
+
     setSentStatus(true);
     setTimeout(() => {
       setSentStatus(false);
-      setCustomForm({ buyerName: "", buyerEmail: "", notes: "" });
+      setCustomForm({ buyerName: "", buyerEmail: "", phone: "", notes: "" });
     }, 6000);
   };
 
@@ -596,22 +613,29 @@ export default function BuildCustomizer() {
               {/* Form Submission code */}
               <form onSubmit={handleBuildSubmission} className="space-y-3.5 pt-2">
                 <h5 className="text-[10px] font-black uppercase tracking-widest text-[#FBBF24] text-center">// Submit This Custom Build Spec</h5>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid sm:grid-cols-3 gap-2">
                   <input
                     type="text"
                     required
                     placeholder="Buyer Name"
                     value={customForm.buyerName}
                     onChange={(e) => setCustomForm({ ...customForm, buyerName: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-[#0A1428] border border-white/10 rounded text-xs font-bold uppercase tracking-wider text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FBBF24]"
+                    className="w-full px-2.5 py-2.5 bg-[#0A1428] border border-white/10 rounded text-[10px] font-bold uppercase tracking-wider text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FBBF24]"
                   />
                   <input
                     type="email"
                     required
-                    placeholder="E-mail Address"
+                    placeholder="E-mail"
                     value={customForm.buyerEmail}
                     onChange={(e) => setCustomForm({ ...customForm, buyerEmail: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-[#0A1428] border border-white/10 rounded text-xs font-bold uppercase tracking-wider text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FBBF24]"
+                    className="w-full px-2.5 py-2.5 bg-[#0A1428] border border-white/10 rounded text-[10px] font-bold uppercase tracking-wider text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FBBF24]"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Phone"
+                    value={customForm.phone}
+                    onChange={(e) => setCustomForm({ ...customForm, phone: e.target.value })}
+                    className="w-full px-2.5 py-2.5 bg-[#0A1428] border border-white/10 rounded text-[10px] font-bold uppercase tracking-wider text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FBBF24]"
                   />
                 </div>
                 <textarea
