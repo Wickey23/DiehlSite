@@ -1,0 +1,14 @@
+First-time setup:
+SETUP_ONCE_V98_LIGHT.bat
+
+Start browser app:
+START_BROWSER_V98_LIGHT.bat
+
+Direct Python start:
+.venv\Scripts\python.exe Agentic_VIN_Email_Sorter_v98_Lite.py --browser --port 8765
+
+Compile check:
+.venv\Scripts\python.exe -m py_compile Agentic_VIN_Email_Sorter_v98_Lite.py
+
+Browser URL:
+http://127.0.0.1:8765

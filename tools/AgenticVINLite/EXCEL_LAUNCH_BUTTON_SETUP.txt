@@ -1,0 +1,19 @@
+Agentic VIN Email Sorter Lite - Excel Launch Button Setup
+========================================================
+
+Option A - workbook beside app BAT
+1. Place your Excel workbook in the same folder as START_BROWSER_V98_LIGHT.bat.
+2. Open the workbook in Excel.
+3. Press ALT+F11, choose File > Import File, and import Excel_Launcher_Module.bas.
+4. Insert a shape/button in the workbook.
+5. Right-click the shape, choose Assign Macro, and select Launch_Agentic_VIN_Lite.
+
+Option B - named cell points to app folder
+1. Put the app files in any folder.
+2. In the workbook, create a named cell called AgenticVINAppFolder.
+3. Set that cell value to the full app folder path, for example:
+   C:\Users\sameer\OneDrive - Diehl's Truck World\VIN FOLDER AGENT\tools\AgenticVINLite
+4. Import Excel_Launcher_Module.bas.
+5. Assign Launch_Agentic_VIN_Lite to a button/shape.
+
+The macro only starts START_BROWSER_V98_LIGHT.bat. It does not edit the workbook or send email.
