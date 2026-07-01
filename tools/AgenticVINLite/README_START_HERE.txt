@@ -34,3 +34,11 @@ Lite safety defaults
 Outlook note
 ------------
 Outlook integration requires Classic desktop Outlook and pywin32. New Outlook does not expose the same COM automation surface.
+
+
+Local test mode
+---------------
+Use --local-test-folder to process saved .eml, .txt, and .pdf files without Outlook so email/PDF extraction and workbook writes can be smoke-tested in non-Outlook environments.
+
+Example:
+.venv\Scripts\python.exe Agentic_VIN_Email_Sorter_v98_Lite.py --browser --port 8765 --local-test-folder C:\Temp\AgenticVINTestEvidence

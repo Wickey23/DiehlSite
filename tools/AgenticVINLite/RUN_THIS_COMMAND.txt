@@ -12,3 +12,6 @@ Compile check:
 
 Browser URL:
 http://127.0.0.1:8765
+
+Local test mode without Outlook:
+.venv\Scripts\python.exe Agentic_VIN_Email_Sorter_v98_Lite.py --browser --port 8765 --local-test-folder C:\Temp\AgenticVINTestEvidence
