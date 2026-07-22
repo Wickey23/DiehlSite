@@ -1,42 +1,64 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Diehl's Truck World — Build Your Truck
 
-# Run and deploy your AI Studio app
+Production-style multi-brand commercial truck configurator for Isuzu, Freightliner, and Western Star.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/336c5088-514b-4bc7-b724-8e3edc258138
+- Real manufacturer model families and published specification ranges
+- Uploaded GLB models for Freightliner and heavy-duty / Western Star reference viewing
+- Current U.S. Isuzu gas, diesel, EV, and F-Series chassis catalog
+- Current 12-configuration Freightliner diesel, electric, and natural-gas lineup, including separate eM2 Class 6/Class 7 rules
+- First-person Isuzu interior look-around with admin eye-point calibration
+- Per-chassis/body alignment profiles, real-scale asset targeting, and wheelbase attachment mapping
+- Searchable 104-category Isuzu upfit request catalog with shared modular body assets
+- Searchable Freightliner catalog with 210 source entries, shared modular bodies/trailers, cab dimensions, nominal size presets, accessories, and model/body compatibility rules
+- Customer-selectable accessory mounting locations with compatibility filtering
+- Parametric concept-body previews for missing GLBs, with rearward-only length growth that preserves cab proportions
+- NRR EV battery/wheelbase and ePTO compatibility rules
+- Body, chassis, engine, transmission, axle, suspension, package, color and equipment selection
+- Planning estimate, finance illustration and inventory-fit logic
+- Quote lead capture with customer build IDs
+- Sales pipeline workspace
 
-## Run Locally
+## Local development
 
-**Prerequisites:**  Node.js
+On Windows, double-click `START_LOCAL_TEST.bat`. It installs the required
+packages when needed, starts the site, and opens the browser automatically.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
-
-## Normalize a warranty workbook without touching raw sheets
-
-Use the workbook normalizer when a source workbook must remain the raw source of truth and the normalized database layer must live in new sheets only.
+Or run it manually:
 
 ```bash
-npm run normalize:workbook -- ./source-workbook.xlsx ./source-workbook.normalized.xlsx
+npm install
+npm run local
 ```
 
-The script preserves all original sheets and adds or refreshes only these database-layer sheets:
+Open `http://localhost:3000`.
 
-- `DB_Customers`
-- `DB_Units` (VIN is the primary key)
-- `DB_InService`
-- `DB_WarrantyCoverage`
-- `DB_Contacts`
-- `DB_ActivityLog`
-- `DB_FieldMapping`
-- `DB_DataQuality`
-- `DB_Dashboard`
+See `LOCAL_TESTING.md` for complete setup and troubleshooting instructions.
 
-`DB_FieldMapping` is generated for every original column before the normalized sheets are populated. Each original column is either mapped to a normalized field or explicitly marked as `preserved in raw source only`, so no source column is silently dropped. Each normalized database table includes `Raw_Source_Sheet` and `Raw_Source_Row` columns for traceability back to the exact raw row.
+## Production build
+
+```bash
+npm run build
+npm start
+```
+
+Truck specifications and planning prices require dealer validation before ordering.
+
+## Deploying with Vercel
+
+1. Push this repository to GitHub.
+2. In Vercel, choose **Add New → Project** and import the GitHub repository.
+3. Keep the detected framework as **Next.js** and deploy. The included
+   `vercel.json` uses the native Next.js production build.
+
+Vercel deployment metadata, local environment files, generated output, and the
+ChatGPT Sites project configuration are intentionally excluded from Git.
+
+See `CHANGES_THIS_VERSION.md` for the completed changes and the current segmented-GLB requirement for exact wheelbase animation.
+
+## Adding GLB assets
+
+Use `MODEL_ASSET_DROP/` as the handoff structure. The 3D Admin model library is
+the source of truth for assigning each uploaded GLB, its exact material names,
+real dimensions, compatibility status, and body-sizing behavior.

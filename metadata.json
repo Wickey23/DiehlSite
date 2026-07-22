@@ -1,6 +1,0 @@
-{
-  "name": "Diehl's Truck World",
-  "description": "Responsive landing page for Diehl's Truck World commercial truck dealership, custom truck builds, parts, and service center in Richmond Hill, NY.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

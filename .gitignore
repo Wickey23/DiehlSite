@@ -1,8 +1,10 @@
 node_modules/
-build/
+.next/
+.open-next/
+out/
 dist/
-coverage/
-.DS_Store
+.vinext/
+.vercel/
+.openai/
 *.log
-.env*
-!.env.example
+.DS_Store
