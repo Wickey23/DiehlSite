@@ -12,6 +12,7 @@ import { formatFeetAndInches, formatInches, getTruckSizing } from "./sizingEngin
 type BrandId = "isuzu" | "freightliner" | "western-star";
 type ViewMode = "builder" | "sales" | "alignment";
 type TruckView = "exterior" | "interior";
+type OnboardingStage = "needs" | "manufacturer" | "models" | "builder";
 type PrintViewName = "front" | "rear" | "left" | "right" | "top";
 type PrintViewSet = Partial<Record<PrintViewName, string>>;
 
@@ -718,7 +719,8 @@ export default function Configurator() {
   const [mountLoaded, setMountLoaded] = useState(false);
   const [adminDataLoaded, setAdminDataLoaded] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
-  const [manufacturerChosen, setManufacturerChosen] = useState(false);
+  const [onboardingStage, setOnboardingStage] = useState<OnboardingStage>("needs");
+  const manufacturerChosen = onboardingStage === "builder";
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [heroTruckIndex, setHeroTruckIndex] = useState(0);
   const [viewerFullscreen, setViewerFullscreen] = useState(false);
@@ -785,6 +787,21 @@ export default function Configurator() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/models/registry-overrides.json", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : [])
+      .then((published: ModelAssetRecord[]) => {
+        if (cancelled || !Array.isArray(published) || !published.length) return;
+        setModelAssets((current) => current.map((asset) => {
+          const durable = published.find((candidate) => candidate.id === asset.id);
+          return durable ? { ...asset, ...durable } : asset;
+        }));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(BUILD_DRAFT_KEY) || "null") as BuildDraft | null;
       if (saved?.version === 2) {
@@ -808,9 +825,10 @@ export default function Configurator() {
           setOptions(Array.isArray(saved.options) ? saved.options : []);
           setAccessoryPlacements(Array.isArray(saved.accessoryPlacements) ? saved.accessoryPlacements : []);
           setJob(saved.job ? { ...defaultJob, ...saved.job } : defaultJob);
-          setStep(Math.min(6, Math.max(0, saved.step || 0)));
+          const savedStep = Math.min(6, Math.max(0, saved.step || 0));
+          setStep(Math.max(2, savedStep));
           setDraftSavedAt(saved.savedAt || null);
-          setManufacturerChosen(true);
+          setOnboardingStage(savedStep === 0 ? "needs" : savedStep === 1 ? "models" : "builder");
         }
       }
     } catch {}
@@ -925,10 +943,9 @@ export default function Configurator() {
 
   const startManufacturer = (id: BrandId, preferredModelId?: string) => {
     selectBrand(id, preferredModelId);
-    setStep(0);
-    setCompletionSignatures({});
+    setCompletionSignatures((current) => ({ ...current, 0: JSON.stringify(job) }));
     setStepValidationMessage("");
-    setManufacturerChosen(true);
+    setOnboardingStage("models");
   };
 
   const selectModel = (id: string) => {
@@ -945,6 +962,18 @@ export default function Configurator() {
     setShowAllBodies(false);
     setShowAllModels(false);
     setQuoteSent(false);
+  };
+
+  const startModelConfiguration = (id: string) => {
+    selectModel(id);
+    setCompletionSignatures((current) => ({
+      ...current,
+      0: JSON.stringify(job),
+      1: JSON.stringify([brandId, id])
+    }));
+    setStepValidationMessage("");
+    setStep(2);
+    setOnboardingStage("builder");
   };
 
   const selectFeaturedTruck = (nextBrand: Brand, nextModel: TruckModel) => {
@@ -990,7 +1019,7 @@ export default function Configurator() {
     setShowAllBodies(false);
     setShowAllModels(false);
     setQuoteSent(false);
-    setManufacturerChosen(false);
+    setOnboardingStage("needs");
     try { localStorage.removeItem(BUILD_DRAFT_KEY); } catch {}
     setDraftSavedAt(null);
   };
@@ -1015,6 +1044,10 @@ export default function Configurator() {
   const bodyVariant = activeBodyVariants.find((variant) => variant.id === bodyVariantId) || activeBodyVariants[0];
   const wheelbaseIn = Number.parseFloat(wheelbase);
   const sizing = getTruckSizing(brandId, model.id, cab, wheelbase, bodyVariant?.lengthFt);
+  const measurementsAvailable = sizing.confidence === "oem";
+  useEffect(() => {
+    if (!measurementsAvailable) setShowMeasurements(false);
+  }, [measurementsAvailable, brandId, model.id]);
   const mountableOptions = options.filter((item) => accessorySlots.some((slot) => slot.compatibleAccessories.includes(item)));
   const searchableBodyCatalog = brandId === "isuzu" || brandId === "freightliner";
   const priorityBodies = brandId === "freightliner" ? priorityFreightlinerBodies : priorityIsuzuBodies;
@@ -1179,7 +1212,10 @@ export default function Configurator() {
     setQuoteSent(true);
   };
 
-  const changeViewAngle = (orbit: string) => viewerRef.current?.setAttribute("camera-orbit", orbit);
+  const changeViewAngle = (orbit: string, preset: "front" | "rear" | "left" | "right" | "top" | "three-quarter") => {
+    viewerRef.current?.setAttribute("camera-orbit", orbit);
+    viewerSurfaceRef.current?.querySelector(".modular-truck-viewer,.placeholder-truck-viewer")?.dispatchEvent(new CustomEvent("dtw-print-view", { detail: { preset } }));
+  };
   const toggleViewerFullscreen = async () => {
     if (document.fullscreenElement === viewerSurfaceRef.current) return document.exitFullscreen();
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -1211,18 +1247,18 @@ export default function Configurator() {
         viewer.setAttribute("camera-orbit", definition.orbit);
         try { await viewer.updateComplete; } catch {}
       } else {
-        viewerSurfaceRef.current?.querySelector(".modular-truck-viewer")?.dispatchEvent(new CustomEvent("dtw-print-view", { detail: { preset: definition.preset } }));
+        viewerSurfaceRef.current?.querySelector(".modular-truck-viewer,.placeholder-truck-viewer")?.dispatchEvent(new CustomEvent("dtw-print-view", { detail: { preset: definition.preset } }));
       }
       await waitForPaint(90);
       try {
-        captured[definition.name] = viewer?.toDataURL?.("image/png", 0.94) || viewerSurfaceRef.current?.querySelector<HTMLCanvasElement>(".modular-truck-viewer canvas")?.toDataURL("image/png", 0.94) || "";
+        captured[definition.name] = viewer?.toDataURL?.("image/png", 0.94) || viewerSurfaceRef.current?.querySelector<HTMLCanvasElement>(".modular-truck-viewer canvas,.placeholder-truck-viewer canvas")?.toDataURL("image/png", 0.94) || "";
       } catch {
         captured[definition.name] = "";
       }
     }
 
     viewer?.setAttribute("camera-orbit", "35deg 70deg auto");
-    viewerSurfaceRef.current?.querySelector(".modular-truck-viewer")?.dispatchEvent(new CustomEvent("dtw-print-view", { detail: { preset: "three-quarter" } }));
+    viewerSurfaceRef.current?.querySelector(".modular-truck-viewer,.placeholder-truck-viewer")?.dispatchEvent(new CustomEvent("dtw-print-view", { detail: { preset: "three-quarter" } }));
     setPrintViews(captured);
 
     let interiorImage = "";
@@ -1245,6 +1281,7 @@ export default function Configurator() {
   const displayedVisualSource = interiorActive ? interiorAsset?.file || "" : visualSource;
   useEffect(() => { viewerRef.current = null; }, [brandId, model.id, displayedVisualSource, completeTruckAsset?.file]);
   const exactVisual = completeTruckAsset?.status === "exact" || (exteriorAsset?.status === "exact" && (body === "Cab & Chassis" || selectedBodyAsset?.status === "exact"));
+  const modularViewerActive = !completeTruckAvailable && brandId === "isuzu" && model.id === "nrr-ev" && Boolean(exteriorAsset && exteriorAsset.status !== "missing" && visualSource);
   const heroVisualSource = heroExteriorAsset?.file || "";
   const activePhaseIndex = phases.findIndex((phase) => phase.steps.includes(step));
   const activePhase = phases[Math.max(0, activePhaseIndex)];
@@ -1254,30 +1291,36 @@ export default function Configurator() {
   return (
     <main className={view === "builder" ? "site-shell builder-compact" : "site-shell"} data-build-step={step} style={{ "--brand": brand.accent } as React.CSSProperties}>
       <header className="topbar configurator-topbar">
-        <button className="brand-lockup" onClick={() => { setView("builder"); setManufacturerChosen(false); }} aria-label="Return to manufacturer selection"><span><strong>Diehl Truck</strong><small>Configurator</small></span></button>
+        <button className="brand-lockup" onClick={() => { setView("builder"); setOnboardingStage("needs"); }} aria-label="Return to Your Needs"><span><strong>Diehl Truck</strong><small>Configurator</small></span></button>
         {view === "builder" ? <nav className="cockpit-nav" aria-label="Configurator steps">
-          <button className={!manufacturerChosen ? "active" : ""} onClick={() => setManufacturerChosen(false)}>Manufacturer</button>
-          {steps.map((label, index) => <button key={label} disabled={!manufacturerChosen} className={manufacturerChosen && step === index ? "active" : isStepComplete(index) ? "complete" : ""} onClick={() => { setManufacturerChosen(true); setStep(index); }}>{index === 0 ? "Job Info" : index === 2 ? "Config" : label}</button>)}
+          <button className={onboardingStage === "needs" ? "active" : isStepComplete(0) ? "complete" : ""} onClick={() => setOnboardingStage("needs")}>Your Needs</button>
+          <button className={onboardingStage === "manufacturer" ? "active" : onboardingStage === "models" || manufacturerChosen ? "complete" : ""} onClick={() => setOnboardingStage("manufacturer")}>Manufacturer</button>
+          <button disabled={onboardingStage === "needs"} className={onboardingStage === "models" ? "active" : isStepComplete(1) ? "complete" : ""} onClick={() => setOnboardingStage("models")}>Chassis</button>
+          {steps.slice(2).map((label, offset) => { const index = offset + 2; return <button key={label} disabled={!manufacturerChosen} className={manufacturerChosen && step === index ? "active" : isStepComplete(index) ? "complete" : ""} onClick={() => { setOnboardingStage("builder"); setStep(index); }}>{index === 2 ? "Config" : label}</button>; })}
         </nav> : <div className="admin-header-title">3D asset and alignment workspace</div>}
-        <div className="header-actions">{view === "builder" ? <><button className="button ghost small header-summary" onClick={() => setSummaryOpen(true)}>Summary</button><button className="button primary small save-build-action" onClick={() => setSummaryOpen(true)}>Save Build</button><button className="admin-icon-button" onClick={() => setView("alignment")} aria-label="Open 3D Admin">⚙</button></> : <button className="button ghost small" onClick={() => setView("builder")}>Back to builder</button>}</div>
+        <div className="header-actions">{view === "builder" ? <>{manufacturerChosen && <><button className="button ghost small header-summary" onClick={() => setSummaryOpen(true)}>Summary</button><button className="button primary small save-build-action" onClick={() => setSummaryOpen(true)}>Save Build</button></>}<button className="admin-icon-button" onClick={() => setView("alignment")} aria-label="Open 3D Admin">⚙</button></> : <button className="button ghost small" onClick={() => setView("builder")}>Back to builder</button>}</div>
       </header>
 
-      {view === "builder" && !manufacturerChosen
-        ? <ManufacturerLanding onChoose={startManufacturer} assets={modelAssets}/>
+      {view === "builder" && onboardingStage === "needs"
+        ? <NeedsLanding value={job} onChange={setJob} onContinue={() => { setCompletionSignatures((current) => ({ ...current, 0: JSON.stringify(job) })); setOnboardingStage("manufacturer"); }}/>
+        : view === "builder" && onboardingStage === "manufacturer"
+        ? <ManufacturerLanding onChoose={startManufacturer}/>
+        : view === "builder" && onboardingStage === "models"
+        ? <ModelSelectionLanding brand={brand} models={rankedModels} selectedModelId={model.id} assets={modelAssets} color={color.hex} job={job} recommendation={modelRecommendation} onSelect={startModelConfiguration} onBack={() => setOnboardingStage("manufacturer")} onEditNeeds={() => setOnboardingStage("needs")}/>
         : view === "builder" ? <>
         <section className="builder-workspace-shell" id="top">
         <section className="builder-intro" id="builder"><div><span className="eyebrow dark">DIEHL&apos;S GUIDED TRUCK BUILDER</span><h1>Build around the work.</h1><p>Answer a few practical questions. We&apos;ll narrow the chassis and upfit choices, then Diehl&apos;s verifies the final specification.</p></div><div className="builder-draft-tools"><div className="build-security"><span>●</span><strong>{draftSavedAt ? "Progress saved" : "Private build"}</strong><small>{draftSavedAt ? `On this device · ${new Date(draftSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Your selections save automatically"}</small></div><button className="button ghost small" onClick={resetBuild}>Start over</button></div></section>
 
-        <section className="builder-context" aria-label="Manufacturer and current build"><div className="maker-switch"><span>Manufacturer</span><div>{brands.map((item) => <button key={item.id} onClick={() => selectBrand(item.id)} className={brandId === item.id ? "active" : ""}><b>{item.id === "western-star" ? "WS" : item.name.slice(0, 2).toUpperCase()}</b><span>{item.name}</span></button>)}</div></div><button className="context-summary" onClick={() => setSummaryOpen(true)}><span><small>Current build</small><strong>{brand.name} {model.name}</strong></span><span><small>Body</small><strong>{body}</strong></span><span><small>Estimate</small><strong>{estimateAvailable ? money(estimate) : "Dealer quote"}</strong></span><b>View summary →</b></button></section>
+        <section className="builder-context" aria-label="Manufacturer and current build"><div className="maker-switch"><span>Manufacturer</span><div>{brands.map((item) => <button key={item.id} onClick={() => { selectBrand(item.id); setOnboardingStage("models"); }} className={brandId === item.id ? "active" : ""}><b>{item.id === "western-star" ? "WS" : item.name.slice(0, 2).toUpperCase()}</b><span>{item.name}</span></button>)}</div></div><button className="context-summary" onClick={() => setSummaryOpen(true)}><span><small>Current build</small><strong>{brand.name} {model.name}</strong></span><span><small>Body</small><strong>{body}</strong></span><span><small>Estimate</small><strong>{estimateAvailable ? money(estimate) : "Dealer quote"}</strong></span><b>View summary →</b></button></section>
 
-        <div className="phase-navigation" aria-label="Build progress" style={{ "--build-progress": `${buildProgress}%` } as React.CSSProperties}><div className="phase-progress-copy"><span>Step {step + 1} of {steps.length}</span><strong>{activePhase.label}</strong><small>{isStepComplete(step) ? "✓ Current step confirmed" : `${steps[step]} · not confirmed`}</small><div className="build-progress-meter" aria-label={`${buildProgress}% of build confirmed`}><i/><b>{buildProgress}%</b></div></div><div className="phase-track">{phases.map((phase, index) => { const complete = phase.steps.every(isStepComplete); return <button key={phase.label} onClick={() => setStep(phase.steps[0])} className={`${index === activePhaseIndex ? "active" : ""}${complete ? " complete" : " incomplete"}`}><span>{complete ? "✓" : index + 1}</span><strong>{phase.label}</strong><small>{complete ? "Complete" : phase.detail}</small></button>; })}</div><div className="phase-substeps">{activePhase.steps.map((phaseStep) => <button key={steps[phaseStep]} className={`${step === phaseStep ? "active" : ""}${isStepComplete(phaseStep) ? " complete" : ""}`} onClick={() => setStep(phaseStep)}>{isStepComplete(phaseStep) ? "✓ " : ""}{steps[phaseStep]}</button>)}</div></div>
+        <div className="phase-navigation" aria-label="Build progress" style={{ "--build-progress": `${buildProgress}%` } as React.CSSProperties}><div className="phase-progress-copy"><span>Step {step + 1} of {steps.length}</span><strong>{activePhase.label}</strong><small>{isStepComplete(step) ? "✓ Current step confirmed" : `${steps[step]} · not confirmed`}</small><div className="build-progress-meter" aria-label={`${buildProgress}% of build confirmed`}><i/><b>{buildProgress}%</b></div></div><div className="phase-track">{phases.map((phase, index) => { const complete = phase.steps.every(isStepComplete); const first = phase.steps[0]; return <button key={phase.label} onClick={() => first === 0 ? setOnboardingStage("needs") : first === 1 ? setOnboardingStage("models") : setStep(first)} className={`${index === activePhaseIndex ? "active" : ""}${complete ? " complete" : " incomplete"}`}><span>{complete ? "✓" : index + 1}</span><strong>{phase.label}</strong><small>{complete ? "Complete" : phase.detail}</small></button>; })}</div><div className="phase-substeps">{activePhase.steps.map((phaseStep) => <button key={steps[phaseStep]} className={`${step === phaseStep ? "active" : ""}${isStepComplete(phaseStep) ? " complete" : ""}`} onClick={() => phaseStep === 0 ? setOnboardingStage("needs") : phaseStep === 1 ? setOnboardingStage("models") : setStep(phaseStep)}>{isStepComplete(phaseStep) ? "✓ " : ""}{steps[phaseStep]}</button>)}</div></div>
 
         <section className="config-layout" data-step={step}>
           <div className="config-main">
             <div className="viewer-card">
               <div className="viewer-heading"><div><span className="live-build-label"><i/> LIVE PREVIEW</span><h3>{brand.name} {model.name}</h3><p>{body}{bodyVariant ? ` · ${bodyVariant.label}` : ""} · {wheelbase} · {axle}</p></div><span className={exactVisual ? "visual-badge exact" : activeVisualStatus === "missing" ? "visual-badge missing" : "visual-badge"}>{interiorActive ? interiorAsset?.status === "reference" ? "Reference interior · not exact" : interiorAsset?.status === "exact" ? "Exact interior" : "Interior model missing" : exactVisual ? "Exact verified model" : completeTruckAvailable ? "Complete truck reference · chassis unverified" : exteriorAsset?.status === "reference" ? "Reference model · not exact" : "3D model missing"}</span></div>
               <div className="viewer-surface" ref={viewerSurfaceRef}>
-                <div className="viewer-mode-toggle" aria-label="Choose exterior or interior view"><button className={truckView === "exterior" ? "active" : ""} onClick={() => setTruckView("exterior")}>Exterior</button><button className={truckView === "interior" ? "active" : ""} onClick={() => setTruckView("interior")}>Interior</button><button className={showMeasurements ? "active" : ""} onClick={() => setShowMeasurements((current) => !current)} aria-pressed={showMeasurements}>Measurements</button></div>
+                <div className="viewer-mode-toggle" aria-label="Choose exterior or interior view"><button className={truckView === "exterior" ? "active" : ""} onClick={() => setTruckView("exterior")}>{interiorActive ? "← Exit interior" : "Exterior"}</button><button className={truckView === "interior" ? "active" : ""} onClick={() => setTruckView("interior")}>Interior</button><button className={showMeasurements ? "active" : ""} disabled={!measurementsAvailable} title={measurementsAvailable ? "Show OEM dimensions on the model" : "OEM dimensions have not been verified for this chassis"} onClick={() => setShowMeasurements((current) => !current)} aria-pressed={showMeasurements}>{measurementsAvailable ? "Measurements" : "Measurements unavailable"}</button></div>
                 {interiorActive
                   ? interiorAsset?.status !== "missing" && displayedVisualSource
                     ? <InteriorCabViewer key={displayedVisualSource} src={displayedVisualSource} config={interiorCamera}/>
@@ -1289,7 +1332,7 @@ export default function Configurator() {
                     : brandId === "isuzu" && model.id === "nrr-ev"
                       ? <ModularTruckViewer body={body} bodyAssetStatus={selectedBodyAsset?.status} mount={activeAssemblyMount} dimensions={realScale} measurementLabels={showMeasurements ? { overall: formatFeetAndInches(sizing.completedOverallLengthIn || sizing.chassisOverallLengthIn), wheelbase: formatInches(sizing.wheelbaseIn), bodyLength: bodyVariant?.lengthFt ? `${bodyVariant.label}` : "Not specified", width: formatInches(sizing.chassisOverallWidthIn), height: `${formatInches(sizing.chassisOverallHeightIn)} cab`, verified: sizing.confidence === "oem" } : undefined} assetId={exteriorAsset.id} bodyAssetId={selectedBodyAsset?.id} attachments={attachmentPoints} wheelbaseIn={wheelbaseIn} bodyLengthFt={bodyVariant?.lengthFt} nominalBodyLengthFt={selectedBodyAsset?.nominalLengthFt} bodySizingMode={selectedBodyAsset?.bodySizingMode} accessorySlots={accessorySlots} accessoryPlacements={accessoryPlacements} chassisSrc={visualSource} bodySrc={selectedBodyAsset?.file || "/models/isuzu-dry-van-body.glb"} color={color.hex} paintMaterials={exteriorAsset?.paintMaterials} bodyColor={bodyColor.hex} bodyPaintMaterials={selectedBodyAsset?.paintMaterials} showFullscreen={false}/>
                       : <ModelViewer key={displayedVisualSource} src={displayedVisualSource} color={color.hex} paintMaterials={exteriorAsset?.paintMaterials} viewerRef={viewerRef}/>}
-                {!interiorActive && brandId !== "isuzu" && <div className="viewer-controls"><button onClick={() => changeViewAngle("0deg 72deg auto")}>Front</button><button onClick={() => changeViewAngle("90deg 72deg auto")}>Side</button><button onClick={() => changeViewAngle("180deg 72deg auto")}>Rear</button><button onClick={() => changeViewAngle("35deg 70deg auto")}>3/4</button></div>}
+                {!interiorActive && !modularViewerActive && <div className="viewer-controls" aria-label="Standard truck views"><button onClick={() => changeViewAngle("0deg 72deg auto", "front")}>Front</button><button onClick={() => changeViewAngle("-90deg 72deg auto", "left")}>Left</button><button onClick={() => changeViewAngle("90deg 72deg auto", "right")}>Right</button><button onClick={() => changeViewAngle("180deg 72deg auto", "rear")}>Rear</button><button onClick={() => changeViewAngle("35deg 70deg auto", "three-quarter")}>3/4</button></div>}
                 {interiorActive && <div className="interior-look-hint"><b>Interior look-around</b><span>Drag to look left, right, up and down</span></div>}
                 {!interiorActive && showMeasurements && <div className="measurement-confidence" role="status">{exactVisual && realScale.enabled ? "Verified dimensions where configured" : "Planning dimensions · final verification required"}</div>}
                 {!interiorActive && accessoryPlacements.length > 0 && (completeTruckAvailable || exteriorAsset?.status !== "missing") && brandId !== "isuzu" && <div className="accessory-visual-warning">{accessoryPlacements.length} placement{accessoryPlacements.length === 1 ? "" : "s"} saved · modular accessory GLBs required for live 3D</div>}
@@ -1348,7 +1391,7 @@ export default function Configurator() {
               {step === 6 && <QuotePanel sent={quoteSent} buildId={buildId} brand={brand} model={model} body={`${body}${bodyVariant ? ` · ${bodyVariant.label}` : ""}`} estimate={estimate} estimateAvailable={estimateAvailable} fit={fit} onSubmit={submitQuote} onPrint={() => void printBuild()}/>}
               {stepValidationMessage && <div className="step-validation-message" role="alert">{stepValidationMessage}</div>}
               </div>
-              {step < 6 && <div className="panel-nav"><button className="button ghost" onClick={() => step === 0 ? setManufacturerChosen(false) : setStep(step - 1)}>← {step === 0 ? "Manufacturer" : "Back"}</button><button className="button primary" onClick={confirmStepAndContinue}>Confirm &amp; continue <span>→</span><small>{steps[step + 1]}</small></button></div>}
+              {step < 6 && <div className="panel-nav"><button className="button ghost" onClick={() => step <= 2 ? setOnboardingStage("models") : setStep(step - 1)}>← {step <= 2 ? "Chassis" : "Back"}</button><button className="button primary" onClick={confirmStepAndContinue}>Confirm &amp; continue <span>→</span><small>{steps[step + 1]}</small></button></div>}
             </div>
           </div>
 
@@ -1367,13 +1410,15 @@ export default function Configurator() {
         </section>
 
         <section className="print-document" aria-hidden="true">
+          <div className="print-running-footer"><span>Diehl&apos;s Truck World · Preliminary Truck Specification</span><span>{buildId}</span></div>
           <header className="print-header"><div><span className="print-logo">DTW</span><span><strong>Diehl&apos;s Truck World</strong><small>Preliminary Truck Specification</small></span></div><div><span>BUILD ID</span><strong>{buildId}</strong><small>Revision 01 · Customer planning build</small></div></header>
           <div className="print-status"><strong>SUBMITTED FOR DIEHL&apos;S REVIEW</strong><span>Not a purchase order, receipt, final quote or engineering approval</span></div>
           <section className="print-hero"><div className="print-truck-frame">{printViews.front ? <img src={printViews.front} alt={`Standardized front view of ${brand.name} ${model.name}`}/> : <div><strong>Truck preview unavailable</strong><span>Open Print from the builder to capture the standardized inspection views.</span></div>}<small>Front planning view · geometry status: {exactVisual ? "exact/verified where recorded" : "reference or concept"}</small></div><div className="print-build-title"><span>{brand.name}</span><h1>{model.name}</h1><p>{body}{bodyVariant ? ` · ${bodyVariant.label}` : ""}</p><dl><div><dt>Planning estimate</dt><dd>{estimateAvailable ? money(estimate) : "Dealer quote required"}</dd></div><div><dt>Inventory fit</dt><dd>{fit}% · dealer review</dd></div><div><dt>Generated</dt><dd>{printPreparedAt || "At print time"}</dd></div></dl></div></section>
+          <section className="print-section print-verification-section"><h2>Build verification status</h2><div className="print-verification-grid"><div className={exactVisual ? "verified" : "review"}><span>3D geometry</span><strong>{exactVisual ? "Verified asset recorded" : "Reference / concept"}</strong><small>{exactVisual ? "Exact geometry is recorded for the configured assembly." : "Do not use the preview as production geometry."}</small></div><div className={bodyCompatibility === "verified" ? "verified" : bodyCompatibility === "incompatible" ? "blocked" : "review"}><span>Body compatibility</span><strong>{bodyCompatibility === "verified" ? "Verified" : bodyCompatibility === "incompatible" ? "Not compatible" : "Engineering review"}</strong><small>Wheelbase, CA, axle loading and mounting require final confirmation.</small></div><div className={sizing.confidence === "oem" ? "verified" : "review"}><span>Dimensions</span><strong>{sizing.confidence === "oem" ? "OEM planning basis" : "Planning estimate"}</strong><small>{sizing.source}</small></div><div className="review"><span>Price and availability</span><strong>Dealer confirmation</strong><small>Final pricing, incentives, inventory and lead time are not approved here.</small></div></div></section>
           <section className="print-section print-views-section"><h2>Configured truck inspection views</h2><div className="print-view-grid">{(["front", "rear", "left", "right", "top"] as PrintViewName[]).map((viewName) => <figure key={viewName}>{printViews[viewName] ? <img src={printViews[viewName]} alt={`${viewName} view of configured ${brand.name} ${model.name}`}/> : <div>View unavailable</div>}<figcaption>{viewName === "rear" ? "Rear" : viewName.charAt(0).toUpperCase() + viewName.slice(1)} view</figcaption></figure>)}</div><p className="print-view-note">All views are captured from the same configured truck state. Images remain planning representations until the underlying chassis and body geometry are verified.</p></section>
           {interiorAsset?.status !== "missing" && interiorAsset?.file && <section className="print-section print-interior-section"><h2>Interior configuration</h2><div className="print-interior-frame">{interiorPrintPreview ? <img src={interiorPrintPreview} alt={`Driver interior view of ${brand.name} ${model.name}`}/> : <div><strong>Interior preview not available</strong><span>The interior asset is recorded but could not be captured.</span></div>}<small>{interiorCamera.verified ? "Verified driver eye point" : "Reference driver eye point · calibration required"}</small></div></section>}
-          <section className="print-section"><h2>Customer requirement</h2><div className="print-spec-grid"><SummaryLine label="Vocation" value={job.vocation}/><SummaryLine label="Operating pattern" value={job.route}/><SummaryLine label="Requested payload" value={job.payload}/><SummaryLine label="Crew" value={job.crew}/><SummaryLine label="Quantity" value={job.quantity}/><SummaryLine label="Desired delivery" value={job.delivery}/><SummaryLine label="Power preference" value={job.fuel}/><SummaryLine label="Customer notes" value={job.notes || "None entered"}/></div></section>
-        <section className="print-section"><h2>Requested configuration</h2><div className="print-spec-grid"><SummaryLine label="Manufacturer / model" value={`${brand.name} ${model.name}`}/><SummaryLine label="GVWR range" value={model.gvwr}/><SummaryLine label="Cab" value={cab}/><SummaryLine label="Wheelbase" value={wheelbase}/><SummaryLine label="Cab to axle" value={formatInches(sizing.cabToAxleIn)}/><SummaryLine label="Cab to end of frame" value={formatInches(sizing.cabToEndFrameIn)}/><SummaryLine label="Completed overall length" value={formatFeetAndInches(sizing.completedOverallLengthIn || sizing.chassisOverallLengthIn)}/><SummaryLine label="OEM body envelope" value={sizing.bodyMinFt === null ? "Dealer engineering required" : sizing.bodyMinFt === sizing.bodyMaxFt ? `${sizing.bodyMinFt} ft` : `${sizing.bodyMinFt}–${sizing.bodyMaxFt} ft`}/><SummaryLine label="Axle configuration" value={axle}/><SummaryLine label="Suspension" value={suspension}/><SummaryLine label="Powertrain" value={engine}/><SummaryLine label="Transmission" value={transmission}/><SummaryLine label="Body" value={body}/><SummaryLine label="Body size / capacity" value={bodyVariant?.label || "Not specified"}/><SummaryLine label="Sizing source" value={sizing.source}/><SummaryLine label="Cab color" value={color.name}/><SummaryLine label="Body color" value={bareBodySelected ? "No body selected" : bodyColor.name}/><SummaryLine label="Equipment package" value={selectedPackage}/></div></section>
+          <section className="print-section print-requirements-section"><h2>Customer requirement</h2><div className="print-spec-grid"><SummaryLine label="Vocation" value={job.vocation}/><SummaryLine label="Operating pattern" value={job.route}/><SummaryLine label="Requested payload" value={job.payload}/><SummaryLine label="Crew" value={job.crew}/><SummaryLine label="Quantity" value={job.quantity}/><SummaryLine label="Desired delivery" value={job.delivery}/><SummaryLine label="Power preference" value={job.fuel}/><SummaryLine label="Customer notes" value={job.notes || "None entered"}/></div></section>
+        <section className="print-section print-configuration-section"><h2>Requested configuration</h2><div className="print-spec-grid"><SummaryLine label="Manufacturer / model" value={`${brand.name} ${model.name}`}/><SummaryLine label="GVWR range" value={model.gvwr}/><SummaryLine label="Cab" value={cab}/><SummaryLine label="Wheelbase" value={wheelbase}/><SummaryLine label="Cab to axle" value={formatInches(sizing.cabToAxleIn)}/><SummaryLine label="Cab to end of frame" value={formatInches(sizing.cabToEndFrameIn)}/><SummaryLine label="Completed overall length" value={formatFeetAndInches(sizing.completedOverallLengthIn || sizing.chassisOverallLengthIn)}/><SummaryLine label="OEM body envelope" value={sizing.bodyMinFt === null ? "Dealer engineering required" : sizing.bodyMinFt === sizing.bodyMaxFt ? `${sizing.bodyMinFt} ft` : `${sizing.bodyMinFt}–${sizing.bodyMaxFt} ft`}/><SummaryLine label="Axle configuration" value={axle}/><SummaryLine label="Suspension" value={suspension}/><SummaryLine label="Powertrain" value={engine}/><SummaryLine label="Transmission" value={transmission}/><SummaryLine label="Body" value={body}/><SummaryLine label="Body size / capacity" value={bodyVariant?.label || "Not specified"}/><SummaryLine label="Sizing source" value={sizing.source}/><SummaryLine label="Cab color" value={color.name}/><SummaryLine label="Body color" value={bareBodySelected ? "No body selected" : bodyColor.name}/><SummaryLine label="Equipment package" value={selectedPackage}/></div></section>
           <section className="print-section print-two-col"><div><h2>Equipment and placement</h2>{options.length ? <ul>{options.map((item) => { const placement = accessoryPlacements.find((candidate) => candidate.accessory === item); const slot = accessorySlots.find((candidate) => candidate.id === placement?.slotId); return <li key={item}><strong>{item}</strong><span>{slot?.label || "Placement / pricing to be confirmed"}</span></li>; })}</ul> : <p>No equipment selected.</p>}</div><div><h2>Items requiring review</h2><ul><li><strong>Payload and axle loading</strong><span>Final body, equipment and cargo weights required</span></li><li><strong>Body and wheelbase fit</strong><span>{bodyCompatibility === "verified" ? "Recorded as verified; reconfirm for final order" : "Engineering/upfitter review required"}</span></li><li><strong>3D accuracy</strong><span>{exactVisual ? "Exact geometry recorded where configured" : "Displayed geometry is reference/concept only"}</span></li><li><strong>Price and lead time</strong><span>Dealer and upfitter quote required</span></li></ul></div></section>
           <footer className="print-footer"><p>This document records a customer request for planning and quotation. Final specifications, payload, axle ratings, dimensions, regulatory compliance, price, availability and production timing require written approval by Diehl&apos;s Truck World and the applicable manufacturer or upfitter.</p><div><span>Customer / company</span><span>Diehl&apos;s reviewer</span><span>Date / revision</span></div></footer>
         </section>
@@ -1388,25 +1433,66 @@ export default function Configurator() {
   );
 }
 
-function ManufacturerLanding({ onChoose, assets }: { onChoose: (id: BrandId, modelId?: string) => void; assets: ModelAssetRecord[] }) {
+function NeedsLanding({ value, onChange, onContinue }: { value: JobProfile; onChange: (value: JobProfile) => void; onContinue: () => void }) {
+  return <section className="needs-landing" id="builder">
+    <div className="needs-landing-intro">
+      <span className="eyebrow dark">STEP 1 · YOUR NEEDS</span>
+      <h1>Start with the work.<br/>We&apos;ll find the truck.</h1>
+      <p>Tell us how the truck will be used before choosing a brand. Your answers rank every chassis by practical fit, so customers see the strongest options first.</p>
+      <ol><li className="active"><b>1</b><span><strong>Your needs</strong><small>Job, payload, route and crew</small></span></li><li><b>2</b><span><strong>Manufacturer</strong><small>Explore each truck family</small></span></li><li><b>3</b><span><strong>Best-fit chassis</strong><small>Compare transparent fit scores</small></span></li></ol>
+      <div className="needs-assurance"><span>✓</span><div><strong>Not sure is a valid answer</strong><small>Diehl&apos;s verifies payload, axle loading, body fit and final specifications before ordering.</small></div></div>
+    </div>
+    <div className="needs-form-card">
+      <header><div><span>YOUR OPERATING REQUIREMENTS</span><h2>What does this truck need to do?</h2></div><b>1 of 3</b></header>
+      <JobQuestionnaire value={value} onChange={onChange}/>
+      <footer><span>These answers create the model fit percentages shown next.</span><button className="button primary" onClick={onContinue}>Choose a manufacturer <b>→</b></button></footer>
+    </div>
+  </section>;
+}
+
+function ManufacturerLanding({ onChoose }: { onChoose: (id: BrandId) => void }) {
   const details: Record<BrandId, { label: string; use: string; mark: string }> = {
     isuzu: { label: "Low-cab-forward trucks", use: "Delivery, landscape, service and urban work", mark: "IZ" },
     freightliner: { label: "Medium and heavy duty", use: "Vocational, municipal, delivery and fleet work", mark: "FL" },
     "western-star": { label: "Severe-duty vocational", use: "Construction, hauling and demanding jobsites", mark: "WS" }
   };
   return <section className="manufacturer-landing" id="builder">
-    <div className="manufacturer-landing-copy"><span className="eyebrow dark">START YOUR CONFIGURATION</span><h1>Choose your manufacturer</h1><p>Select a chassis brand and base model to begin your configuration. Every choice stays connected to the live 3D build.</p></div>
+    <div className="manufacturer-landing-copy"><span className="eyebrow dark">STEP 2 · MANUFACTURER</span><h1>Choose the truck family you want to explore.</h1><p>Each manufacturer has a different strength. The model carousel gives you a quick look; choosing a brand opens its complete lineup ranked against your needs.</p></div>
     <div className="manufacturer-choice-grid" aria-label="Choose a truck manufacturer">
-      {brands.map((item) => { const detail = details[item.id]; const featured = item.models.slice(0, 2); return <article key={item.id} className="manufacturer-column" style={{ "--maker-accent": item.accent } as React.CSSProperties}>
-        <header><span className="manufacturer-choice-mark">{detail.mark}</span><div><small>{detail.label}</small><strong>{item.name}</strong></div><b>{item.models.length} models</b></header>
-        <div className="manufacturer-featured-models">{featured.map((truck) => { const asset = assets.find((candidate) => candidate.brandId === item.id && candidate.modelId === truck.id && candidate.kind === "complete" && candidate.status !== "missing" && candidate.file) || assets.find((candidate) => candidate.brandId === item.id && candidate.modelId === truck.id && candidate.kind === "exterior"); return <button key={truck.id} className="manufacturer-model-card" onClick={() => onChoose(item.id, truck.id)}>
-          <ModelCardThumbnail brandId={item.id} model={truck} asset={asset} color="#ffffff"/>
-          <span><strong>{truck.name}</strong><small>{truck.className} · {truck.gvwr}</small><p>{truck.description}</p></span><b>Start with this model <span>→</span></b>
-        </button>; })}</div>
-        <button className="manufacturer-browse-all" onClick={() => onChoose(item.id)}>Browse all {item.name} models <span>→</span></button>
+      {brands.map((item) => { const detail = details[item.id]; const flowingModels = [...item.models, ...item.models]; return <button key={item.id} className="manufacturer-choice-card" onClick={() => onChoose(item.id)} style={{ "--maker-accent": item.accent } as React.CSSProperties}>
+        <header><span className="manufacturer-choice-mark">{detail.mark}</span><span><small>{detail.label}</small><strong>{item.name}</strong></span><b>{item.models.length} models</b></header>
+        <div className="manufacturer-carousel" aria-hidden="true"><div className="manufacturer-carousel-track">{flowingModels.map((truck, index) => <span className="manufacturer-carousel-model" key={`${truck.id}-${index}`}><i><b/><em/></i><span><strong>{truck.name}</strong><small>{truck.className}</small></span></span>)}</div></div>
+        <p>{detail.use}</p>
+        <span className="manufacturer-choice-action"><span>View all {item.name} models</span><b>→</b></span>
+      </button>; })}
+    </div>
+    <p className="manufacturer-landing-help">The next screen ranks every model from this manufacturer using the needs you entered.</p>
+  </section>;
+}
+
+type ModelRecommendation = {
+  score: number;
+  band: string;
+  reasons: string[];
+  factors: { label: string; result: "positive" | "negative" | "review"; detail: string }[];
+};
+
+function ModelSelectionLanding({ brand, models, selectedModelId, assets, color, job, recommendation, onSelect, onBack, onEditNeeds }: { brand: Brand; models: TruckModel[]; selectedModelId: string; assets: ModelAssetRecord[]; color: string; job: JobProfile; recommendation: (model: TruckModel) => ModelRecommendation; onSelect: (id: string) => void; onBack: () => void; onEditNeeds: () => void }) {
+  return <section className="model-selection-landing" id="builder">
+    <header className="model-selection-header">
+      <div><button onClick={onBack}>← Manufacturers</button><span className="eyebrow dark">STEP 3 · {brand.name.toUpperCase()} MODELS</span><h1>Best {brand.name} models for your needs</h1><p>All {brand.models.length} models are shown and ranked. Fit percentages are planning guidance—not final payload, engineering or availability approval.</p></div>
+      <aside><span>Your needs</span><strong>{job.vocation}</strong><small>{job.payload} · {job.route} · {job.crew}</small><small>{job.fuel}</small><button onClick={onEditNeeds}>Edit needs</button></aside>
+    </header>
+    <div className="model-ranking-summary"><span>Ranked strongest fit first</span><p>Hover or focus a percentage to see exactly why the score changed.</p></div>
+    <div className="model-selection-grid">
+      {models.map((item, index) => { const asset = assets.find((candidate) => candidate.brandId === brand.id && candidate.modelId === item.id && candidate.kind === "complete" && candidate.status !== "missing" && candidate.file) || assets.find((candidate) => candidate.brandId === brand.id && candidate.modelId === item.id && candidate.kind === "exterior"); const fit = recommendation(item); return <article key={item.id} className={`${selectedModelId === item.id ? "selected " : ""}${fit.score < 55 ? "not-recommended" : fit.score < 70 ? "compromise" : ""}`}>
+        <span className="model-rank">#{index + 1}</span>
+        <ModelCardThumbnail brandId={brand.id} model={item} asset={asset} color={color}/>
+        <div className="model-selection-copy"><span>{item.className}</span><h2>{item.name}</h2><p>{item.description}</p><dl><div><dt>GVWR</dt><dd>{item.gvwr}</dd></div><div><dt>Power</dt><dd>{item.hp}</dd></div></dl></div>
+        <div className="model-fit-panel"><span className="fit-score-popover" tabIndex={0} role="button" aria-label={`View ${fit.score}% fit details for ${item.name}`}><b>{fit.score}%</b><span className="fit-reasoning-popover" role="tooltip"><strong>{fit.band}</strong>{fit.factors.map((factor) => <span key={factor.label} className={factor.result}><b>{factor.result === "positive" ? "+" : factor.result === "negative" ? "−" : "•"}</b><span><em>{factor.label}</em><small>{factor.detail}</small></span></span>)}<i>Planning score only. Dealer verification required.</i></span></span><span><strong>{fit.band}</strong><small>{fit.reasons.join(" ")}</small></span></div>
+        <button className="model-select-action" onClick={() => onSelect(item.id)}>{selectedModelId === item.id ? "Continue with this chassis" : "Select this chassis"}<span>→</span></button>
       </article>; })}
     </div>
-    <p className="manufacturer-landing-help">Not sure which model fits the job? Start with any truck—Diehl&apos;s will verify payload, body fit, axle loading and final specifications.</p>
   </section>;
 }
 

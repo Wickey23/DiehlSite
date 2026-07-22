@@ -62,3 +62,18 @@ See `CHANGES_THIS_VERSION.md` for the completed changes and the current segmente
 Use `MODEL_ASSET_DROP/` as the handoff structure. The 3D Admin model library is
 the source of truth for assigning each uploaded GLB, its exact material names,
 real dimensions, compatibility status, and body-sizing behavior.
+
+Browser uploads are session previews until an administrator chooses **Publish
+to GitHub**. Permanent publishing is handled by the server route so a GitHub
+token is never exposed to the browser. Configure these deployment variables:
+
+- `GITHUB_TOKEN`: fine-grained token with Contents read/write permission for this repository
+- `GITHUB_REPOSITORY`: `Wickey23/DiehlSite`
+- `GITHUB_BRANCH`: normally `main`
+- `MODEL_PUBLISH_KEY`: a separate long private key entered by an administrator when publishing
+
+The publish action validates the GLB, commits it under
+`public/models/uploads/`, updates `public/models/registry-overrides.json`, and
+lets the normal GitHub deployment rebuild make the model permanent. GitHub
+does not accept regular files at or above 100 MB; optimize larger GLBs or use a
+separate LFS/object-storage production workflow.

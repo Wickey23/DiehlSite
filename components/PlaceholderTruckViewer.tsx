@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import { useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei/core/Environment.js";
 import { OrbitControls } from "@react-three/drei/core/OrbitControls.js";
 import { RoundedBox } from "@react-three/drei/core/RoundedBox.js";
@@ -8,6 +10,31 @@ import * as THREE from "three";
 import { AccessoryPlacement } from "./modelRegistry";
 
 type PlaceholderProfile = "cabover" | "conventional" | "highway";
+type ViewPreset = "front" | "rear" | "left" | "right" | "top" | "three-quarter";
+
+const cameraPresets: Record<ViewPreset, [number, number, number]> = {
+  front: [0, 1.35, 7.4],
+  rear: [0, 1.35, -7.4],
+  left: [-7.4, 1.35, 0],
+  right: [7.4, 1.35, 0],
+  top: [0, 8.2, 0.01],
+  "three-quarter": [4.8, 2.7, 6.4]
+};
+
+function PlaceholderCamera({ preset, interior }: { preset: ViewPreset; interior: boolean }) {
+  const { camera, controls } = useThree();
+  useEffect(() => {
+    if (interior) return;
+    const target = new THREE.Vector3(0, .75, 0);
+    camera.position.fromArray(cameraPresets[preset]);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+    const orbit = controls as { target?: THREE.Vector3; update?: () => void } | null;
+    orbit?.target?.copy(target);
+    orbit?.update?.();
+  }, [camera, controls, interior, preset]);
+  return null;
+}
 
 function Wheel({ position }: { position: [number, number, number] }) {
   return <group position={position} rotation={[0, 0, Math.PI / 2]}>
@@ -95,10 +122,23 @@ function InteriorPlaceholder() {
 
 export default function PlaceholderTruckViewer({ brandId, body = "Cab & Chassis", bodyLengthFt, wheelbaseIn, accessoryPlacements, color = "#d6dcde", interior = false, compact = false, thumbnail = false }: { brandId: string; body?: string; bodyLengthFt?: number; wheelbaseIn?: number; accessoryPlacements?: AccessoryPlacement[]; color?: string; interior?: boolean; compact?: boolean; thumbnail?: boolean }) {
   const profile: PlaceholderProfile = brandId === "isuzu" ? "cabover" : body === "Tractor" ? "highway" : "conventional";
-  return <div className="placeholder-truck-viewer">
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [preset, setPreset] = useState<ViewPreset>("three-quarter");
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const handleView = (event: Event) => {
+      const requested = (event as CustomEvent<{ preset?: ViewPreset }>).detail?.preset;
+      if (requested && requested in cameraPresets) setPreset(requested);
+    };
+    root.addEventListener("dtw-print-view", handleView);
+    return () => root.removeEventListener("dtw-print-view", handleView);
+  }, []);
+  return <div className="placeholder-truck-viewer" ref={rootRef}>
     <Canvas shadows dpr={thumbnail ? 1 : [1,1.45]} camera={{ position: interior ? [0,1.1,3.1] : [4.6,2.8,6.4], fov: interior ? 48 : 31 }} gl={{ antialias:true, toneMapping:THREE.ACESFilmicToneMapping }}>
       <ambientLight intensity={1.6}/><directionalLight position={[4,7,5]} intensity={3.2} castShadow/>
       {interior ? <InteriorPlaceholder/> : <ExteriorPlaceholder profile={profile} body={body} bodyLengthFt={bodyLengthFt} wheelbaseIn={wheelbaseIn} accessoryPlacements={accessoryPlacements} paintColor={color}/>}
+      {!thumbnail && <PlaceholderCamera preset={preset} interior={interior}/>}
       {!thumbnail && <Environment preset="warehouse" environmentIntensity={.6}/>}
       {!thumbnail && <OrbitControls makeDefault autoRotate={!interior} autoRotateSpeed={1.25} enablePan={false} enableDamping dampingFactor={.075} rotateSpeed={.65} zoomSpeed={.8} minDistance={interior ? 1.5 : 4.4} maxDistance={interior ? 5 : 10} target={interior ? [0,.75,-.5] : [0,.75,0]}/>}
     </Canvas>

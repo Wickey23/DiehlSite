@@ -58,7 +58,11 @@ const DIESEL_CREW: OemRow[] = [
   [176, 114.5, 157.6, 5.3, 262.7, 92.9, 16, 16]
 ].map(([wheelbaseIn, cabToAxleIn, cabToEndFrameIn, backOfCabIn, overallLengthIn, overallHeightIn, bodyMinFt, bodyMaxFt]) => ({ wheelbaseIn, cabToAxleIn, cabToEndFrameIn, backOfCabIn, overallLengthIn, overallHeightIn, bodyMinFt, bodyMaxFt }));
 
-const NRR_EV: OemRow[] = GAS_STANDARD.filter((row) => [132.5, 150, 176].includes(row.wheelbaseIn));
+const NRR_EV: OemRow[] = [
+  [132.5, 110, 153.1, 7.7, 219.2, 92.9, 12, 14],
+  [150, 127.5, 170.6, 7.7, 236.7, 92.9, 16, 18],
+  [176, 153.5, 196.6, 7.7, 262.7, 92.9, 18, 20]
+].map(([wheelbaseIn, cabToAxleIn, cabToEndFrameIn, backOfCabIn, overallLengthIn, overallHeightIn, bodyMinFt, bodyMaxFt]) => ({ wheelbaseIn, cabToAxleIn, cabToEndFrameIn, backOfCabIn, overallLengthIn, overallHeightIn, bodyMinFt, bodyMaxFt }));
 
 const GAS_MODELS = new Set(["npr-gas", "npr-hd-gas", "nqr-gas", "nrr-gas"]);
 const DIESEL_MODELS = new Set(["npr-hd-diesel", "npr-xd", "nrr-derate-diesel", "nrr"]);
@@ -93,19 +97,21 @@ export function getTruckSizing(brandId: string, modelId: string, cab: string, wh
   }
 
   const frontToBackOfCab = row.overallLengthIn - row.cabToEndFrameIn;
-  const completedOverallLengthIn = requested === null ? null : frontToBackOfCab + row.backOfCabIn + requested * 12;
+  const completedOverallLengthIn = requested === null ? null : frontToBackOfCab + requested * 12;
   const fits = requested === null ? "not-checked" : requested >= row.bodyMinFt && requested <= row.bodyMaxFt ? "fits-oem-envelope" : "outside-oem-envelope";
+  const crew = cab.toLowerCase().includes("crew");
+  const overallHeightIn = modelId === "npr-gas" ? crew ? 91.1 : 90 : modelId === "npr-hd-gas" ? crew ? 91.1 : 90.9 : row.overallHeightIn;
 
   return {
     confidence: "oem",
-    source: modelId === "nrr-ev" ? "Isuzu 2026 NRR EV specifications" : GAS_MODELS.has(modelId) ? "Isuzu 2026 N-Series Gas specifications" : "Isuzu 2026 N-Series Diesel specifications",
+    source: modelId === "nrr-ev" ? "Isuzu NRR EV OEM specifications" : GAS_MODELS.has(modelId) ? "Isuzu 2026 N-Series Gas specifications" : "Isuzu 2026 N-Series Diesel specifications",
     wheelbaseIn: row.wheelbaseIn,
     cabToAxleIn: row.cabToAxleIn,
     cabToEndFrameIn: row.cabToEndFrameIn,
     backOfCabIn: row.backOfCabIn,
     chassisOverallLengthIn: row.overallLengthIn,
     chassisOverallWidthIn: 81.3,
-    chassisOverallHeightIn: row.overallHeightIn,
+    chassisOverallHeightIn: overallHeightIn,
     bodyMinFt: row.bodyMinFt,
     bodyMaxFt: row.bodyMaxFt,
     requestedBodyLengthFt: requested,

@@ -122,8 +122,15 @@ async function zipGlbDrafts(file: File, assets: ModelAssetRecord[]): Promise<Imp
 
 export default function AlignmentAdmin({ mount, onChange, assemblyMounts, onAssemblyMountsChange, assets, onAssetsChange, dimensions, onDimensionsChange, attachments, onAttachmentsChange, interiorCamera, onInteriorCameraChange, accessorySlots, onAccessorySlotsChange, onBack }: { mount: TruckMountConfig; onChange: (mount: TruckMountConfig) => void; assemblyMounts: AssemblyMountRecord[]; onAssemblyMountsChange: (profiles: AssemblyMountRecord[]) => void; assets: ModelAssetRecord[]; onAssetsChange: (assets: ModelAssetRecord[]) => void; dimensions: RealScaleConfig; onDimensionsChange: (dimensions: RealScaleConfig) => void; attachments: AttachmentPointConfig; onAttachmentsChange: (attachments: AttachmentPointConfig) => void; interiorCamera: InteriorCameraConfig; onInteriorCameraChange: (config: InteriorCameraConfig) => void; accessorySlots: AccessorySlotConfig[]; onAccessorySlotsChange: (slots: AccessorySlotConfig[]) => void; onBack: () => void }) {
   const [message, setMessage] = useState("Changes auto-save in this browser");
+  const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [tab, setTab] = useState<"uploads" | "models" | "alignment" | "scale" | "attachments" | "interior">("uploads");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notify = (text: string, kind: "success" | "error" = "success") => {
+    setToast({ text, kind });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4200);
+  };
 
   const updateAxis = (group: VectorKey, index: number, shownValue: number) => {
     const next = cloneMount(mount);
@@ -141,6 +148,7 @@ export default function AlignmentAdmin({ mount, onChange, assemblyMounts, onAsse
     anchor.click();
     URL.revokeObjectURL(href);
     setMessage("Settings exported");
+    notify("3D Admin settings exported successfully.");
   };
 
   const importSettings = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -158,8 +166,10 @@ export default function AlignmentAdmin({ mount, onChange, assemblyMounts, onAsse
       if (Array.isArray(parsed.accessorySlots)) onAccessorySlotsChange(parsed.accessorySlots);
       if (Array.isArray(parsed.assemblyMounts)) onAssemblyMountsChange(parsed.assemblyMounts);
       setMessage("Imported and saved globally");
+      notify("Settings imported and applied successfully.");
     } catch {
       setMessage("That file is not a valid mount configuration");
+      notify("That file is not a valid 3D Admin configuration.", "error");
     }
     event.target.value = "";
   };
@@ -173,8 +183,9 @@ export default function AlignmentAdmin({ mount, onChange, assemblyMounts, onAsse
 
       <nav className="admin-tabs" aria-label="3D administration sections"><button className={tab === "uploads" ? "active" : ""} onClick={() => setTab("uploads")}>Upload models</button><button className={tab === "models" ? "active" : ""} onClick={() => setTab("models")}>Model library <span>{assets.filter((asset) => asset.status === "missing").length} missing</span></button><button className={tab === "alignment" ? "active" : ""} onClick={() => setTab("alignment")}>Body alignment</button><button className={tab === "attachments" ? "active" : ""} onClick={() => setTab("attachments")}>Attachment points <span>{hasAttachmentGeometry(attachments) ? "Active" : "Setup"}</span></button><button className={tab === "interior" ? "active" : ""} onClick={() => setTab("interior")}>Interior camera <span>{interiorCamera.verified ? "Verified" : "Setup"}</span></button><button className={tab === "scale" ? "active" : ""} onClick={() => setTab("scale")}>Real-life scale <span>{dimensions.enabled ? "Active" : "Unverified"}</span></button></nav>
 
-      {tab === "uploads" ? <AssetUploadPanel assets={assets} onChange={onAssetsChange} onOpenLibrary={() => setTab("models")}/> : tab === "models" ? <ModelLibraryPanel assets={assets} onChange={onAssetsChange}/> : tab === "scale" ? <ScalePanel dimensions={dimensions} onChange={onDimensionsChange} mount={mount} onMountChange={onChange}/> : tab === "attachments" ? <AttachmentPointsPanel mount={mount} dimensions={dimensions} attachments={attachments} onChange={onAttachmentsChange} slots={accessorySlots} onSlotsChange={onAccessorySlotsChange}/> : tab === "interior" ? <InteriorCameraPanel assets={assets} config={interiorCamera} onChange={onInteriorCameraChange}/> : <BodyAlignmentPanel assets={assets} onAssetsChange={onAssetsChange} profiles={assemblyMounts} onChange={onAssemblyMountsChange} dimensions={dimensions} attachments={attachments} onExport={exportSettings} onImport={() => fileRef.current?.click()} message={message}/>}
+      {tab === "uploads" ? <AssetUploadPanel assets={assets} onChange={onAssetsChange} onOpenLibrary={() => setTab("models")} onNotify={notify}/> : tab === "models" ? <ModelLibraryPanel assets={assets} onChange={onAssetsChange}/> : tab === "scale" ? <ScalePanel dimensions={dimensions} onChange={onDimensionsChange} mount={mount} onMountChange={onChange} onNotify={notify}/> : tab === "attachments" ? <AttachmentPointsPanel mount={mount} dimensions={dimensions} attachments={attachments} onChange={onAttachmentsChange} slots={accessorySlots} onSlotsChange={onAccessorySlotsChange}/> : tab === "interior" ? <InteriorCameraPanel assets={assets} config={interiorCamera} onChange={onInteriorCameraChange}/> : <BodyAlignmentPanel assets={assets} onAssetsChange={onAssetsChange} profiles={assemblyMounts} onChange={onAssemblyMountsChange} dimensions={dimensions} attachments={attachments} onExport={exportSettings} onImport={() => fileRef.current?.click()} message={message}/>}
       <input ref={fileRef} type="file" accept="application/json,.json" onChange={importSettings} hidden/>
+      {toast && <div className={`admin-toast ${toast.kind}`} role="status" aria-live="polite"><span>{toast.kind === "success" ? "✓" : "!"}</span><div><strong>{toast.kind === "success" ? "Done" : "Action needed"}</strong><small>{toast.text}</small></div><button onClick={() => setToast(null)} aria-label="Dismiss confirmation">×</button></div>}
     </section>
   );
 }
@@ -280,10 +291,13 @@ function CabMaterialPicker({ asset, onClose, onSave }: { asset: ModelAssetRecord
   </div>;
 }
 
-function AssetUploadPanel({ assets, onChange, onOpenLibrary }: { assets: ModelAssetRecord[]; onChange: (assets: ModelAssetRecord[]) => void; onOpenLibrary: () => void }) {
+function AssetUploadPanel({ assets, onChange, onOpenLibrary, onNotify }: { assets: ModelAssetRecord[]; onChange: (assets: ModelAssetRecord[]) => void; onOpenLibrary: () => void; onNotify: (text: string, kind?: "success" | "error") => void }) {
   const [drafts, setDrafts] = useState<ImportDraft[]>([]);
   const [activeId, setActiveId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [publishKey, setPublishKey] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
   const individualRef = useRef<HTMLInputElement | null>(null);
   const zipRef = useRef<HTMLInputElement | null>(null);
   const active = drafts.find((draft) => draft.id === activeId) || drafts[0];
@@ -339,6 +353,41 @@ function AssetUploadPanel({ assets, onChange, onOpenLibrary }: { assets: ModelAs
       const draft = ready.find((item) => item.targetId === asset.id);
       return draft ? { ...asset, file: draft.objectUrl, status: "reference" as const, note: `Session preview from ${draft.fileName}. Export/publish this asset before production; browser uploads are not committed to GitHub.` } : asset;
     }));
+    setPublishMessage(`${ready.length} model${ready.length === 1 ? "" : "s"} applied to this browser session only.`);
+    onNotify(`${ready.length} model${ready.length === 1 ? "" : "s"} applied for this session. Publish to GitHub to make the change permanent.`);
+  };
+  const publishReviewed = async () => {
+    if (!ready.length || unresolved.length || !publishKey.trim()) return;
+    setPublishing(true);
+    setPublishMessage(`Publishing 0 of ${ready.length}…`);
+    let nextAssets = [...assets];
+    try {
+      for (let index = 0; index < ready.length; index += 1) {
+        const draft = ready[index];
+        const target = nextAssets.find((asset) => asset.id === draft.targetId);
+        if (!target) throw new Error(`The destination for ${draft.fileName} no longer exists.`);
+        const response = await fetch(draft.objectUrl);
+        if (!response.ok) throw new Error(`The browser preview for ${draft.fileName} is no longer available.`);
+        const blob = await response.blob();
+        const form = new FormData();
+        form.append("file", new File([blob], draft.fileName, { type: "model/gltf-binary" }));
+        form.append("asset", JSON.stringify({ ...target, status: "reference", note: `Published from reviewed upload ${draft.fileName}. Exact geometry, scale and materials still require 3D Admin verification.` }));
+        setPublishMessage(`Publishing ${index + 1} of ${ready.length}: ${draft.fileName}`);
+        const result = await fetch("/api/models/publish", { method: "POST", headers: { "x-model-publish-key": publishKey.trim() }, body: form });
+        const payload = await result.json().catch(() => ({}));
+        if (!result.ok) throw new Error(payload.error || `GitHub rejected ${draft.fileName}.`);
+        nextAssets = nextAssets.map((asset) => asset.id === target.id ? { ...asset, file: payload.publicPath, status: "reference" as const, note: `Published permanently to GitHub from ${draft.fileName}. Verification is still required before marking exact.` } : asset);
+      }
+      onChange(nextAssets);
+      setPublishMessage(`${ready.length} model${ready.length === 1 ? "" : "s"} committed to GitHub. The deployed site will use them after its next build.`);
+      onNotify(`${ready.length} model${ready.length === 1 ? "" : "s"} committed to GitHub successfully.`);
+    } catch (error) {
+      const failure = error instanceof Error ? error.message : "The models could not be published.";
+      setPublishMessage(failure);
+      onNotify(failure, "error");
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return <div className="upload-studio">
@@ -347,6 +396,7 @@ function AssetUploadPanel({ assets, onChange, onOpenLibrary }: { assets: ModelAs
       <div className="upload-methods"><button onClick={() => individualRef.current?.click()}><span>＋</span><strong>Individual GLB</strong><small>Choose one or several models</small></button><button onClick={() => zipRef.current?.click()}><span>ZIP</span><strong>Mass import</strong><small>Match every GLB by filename</small></button></div>
       <input ref={individualRef} type="file" accept=".glb,model/gltf-binary" multiple hidden onChange={addIndividual}/><input ref={zipRef} type="file" accept=".zip,application/zip" hidden onChange={addZip}/>
       <div className="upload-storage-truth"><span>!</span><div><strong>Uploads start as session previews</strong><p>They do not save to GitHub automatically. Publish the reviewed files through the site&apos;s durable asset workflow before treating them as permanent.</p></div></div>
+      <label className="github-publish-setup"><span>Publisher key</span><input type="password" autoComplete="off" value={publishKey} onChange={(event) => setPublishKey(event.target.value)} placeholder="Enter the server-configured key"/><small>This is a separate admin key—not a GitHub token. The token stays private on the server.</small></label>
       <button className="button ghost full" onClick={onOpenLibrary}>Open complete model library</button>
     </section>
     <section className="upload-preview-panel">
@@ -356,7 +406,7 @@ function AssetUploadPanel({ assets, onChange, onOpenLibrary }: { assets: ModelAs
     <aside className="upload-review-panel">
       <header><div><span>REVIEW QUEUE</span><strong>{drafts.length} model{drafts.length === 1 ? "" : "s"}</strong></div><b>{unresolved.length ? `${unresolved.length} need attention` : drafts.length ? "Ready to apply" : "Waiting"}</b></header>
       <div className="upload-review-list">{drafts.length ? drafts.map((draft, index) => <article key={draft.id} className={`${draft.id === active?.id ? "active" : ""}${draft.error ? " error" : ""}`} onClick={() => setActiveId(draft.id)}><div className="upload-review-index">{draft.error ? "!" : index + 1}</div><div><strong>{draft.fileName}</strong><small>{draft.error || (draft.targetId ? `${draft.confidence}% filename match confidence` : "Choose a destination")}</small><label><span>Destination</span><select value={draft.targetId} disabled={Boolean(draft.error)} onClick={(event) => event.stopPropagation()} onChange={(event) => updateDraft(draft.id, { targetId: event.target.value, confidence: event.target.value === draft.targetId ? draft.confidence : 100 })}><option value="">Choose destination…</option>{targetGroups.map((group) => <optgroup key={group.brandId} label={group.label}>{group.assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.modelName} · {asset.kind} · {asset.variant}</option>)}</optgroup>)}</select></label></div><button aria-label={`Remove ${draft.fileName}`} onClick={(event) => { event.stopPropagation(); removeDraft(draft.id); }}>×</button></article>) : <div className="upload-queue-empty"><strong>No models staged</strong><span>Upload an individual GLB or a ZIP package.</span></div>}</div>
-      <footer><div><span>Storage state</span><strong>Session preview</strong><small>Publish required for permanent customer use</small></div><button className="button primary full" disabled={!ready.length || Boolean(unresolved.length)} onClick={applyReviewed}>Apply {ready.length || "reviewed"} model{ready.length === 1 ? "" : "s"}</button></footer>
+      <footer><div><span>Storage state</span><strong>{publishMessage || "Session preview"}</strong><small>{publishMessage ? "GitHub publication creates a durable repository commit." : "Publish required for permanent customer use"}</small></div><div className="upload-publish-actions"><button className="button ghost full" disabled={publishing || !ready.length || Boolean(unresolved.length)} onClick={applyReviewed}>Use this session</button><button className="button primary full" disabled={publishing || !publishKey.trim() || !ready.length || Boolean(unresolved.length)} onClick={publishReviewed}>{publishing ? "Publishing…" : `Publish ${ready.length || "reviewed"} to GitHub`}</button></div></footer>
     </aside>
   </div>;
 }
@@ -475,13 +525,14 @@ function InteriorCameraPanel({ assets, config, onChange }: { assets: ModelAssetR
   </div>;
 }
 
-function ScalePanel({ dimensions, onChange, mount, onMountChange }: { dimensions: RealScaleConfig; onChange: (dimensions: RealScaleConfig) => void; mount: TruckMountConfig; onMountChange: (mount: TruckMountConfig) => void }) {
+function ScalePanel({ dimensions, onChange, mount, onMountChange, onNotify }: { dimensions: RealScaleConfig; onChange: (dimensions: RealScaleConfig) => void; mount: TruckMountConfig; onMountChange: (mount: TruckMountConfig) => void; onNotify: (text: string, kind?: "success" | "error") => void }) {
   const complete = hasCompleteMeasurements(dimensions) && Boolean(dimensions.targetAssetId.trim()) && Boolean(dimensions.targetBodyAssetId.trim());
   const updateDimension = (part: "chassis" | "body", key: "lengthIn" | "widthIn" | "heightIn", value: string) => onChange({ ...dimensions, enabled: false, [part]: { ...dimensions[part], [key]: value === "" ? null : Number(value) } });
   const apply = () => {
     if (!complete || !dimensions.verified) return;
     onChange({ ...dimensions, enabled: true });
     onMountChange({ ...cloneMount(mount), scale: [1, 1, 1] });
+    onNotify("Verified real-life scale applied to the selected chassis and body assets.");
   };
 
   return <div className="scale-panel">
@@ -491,7 +542,7 @@ function ScalePanel({ dimensions, onChange, mount, onMountChange }: { dimensions
     <div className="dimension-grid"><DimensionCard title="Selected cab and chassis asset" values={dimensions.chassis} onChange={(key, value) => updateDimension("chassis", key, value)}/><DimensionCard title="Selected body asset" values={dimensions.body} onChange={(key, value) => updateDimension("body", key, value)}/></div>
     <label className="dimension-source"><span>Measurement source</span><input value={dimensions.source} placeholder="Example: body builder drawing, OEM dimension sheet, physical measurement" onChange={(event) => onChange({ ...dimensions, enabled: false, source: event.target.value })}/></label>
     <label className="verification-check"><input type="checkbox" checked={dimensions.verified} onChange={(event) => onChange({ ...dimensions, enabled: false, verified: event.target.checked })}/><span><strong>I verified these measurements against a reliable source.</strong><small>The system will not label the model exact until this is checked and every dimension is present.</small></span></label>
-    <div className="scale-actions"><button className="button primary" disabled={!complete || !dimensions.verified} onClick={apply}>Apply measured scale</button><button className="button ghost" onClick={() => onChange({ ...dimensions, enabled: false })}>Disable real scale</button></div>
+    <div className="scale-actions"><button className="button primary" disabled={!complete || !dimensions.verified} onClick={apply}>Apply measured scale</button><button className="button ghost" onClick={() => { onChange({ ...dimensions, enabled: false }); onNotify("Real-life scale disabled. The viewer is back in planning mode."); }}>Disable real scale</button></div>
     <p className="scale-formula">Scaling formula: real dimension in inches × 0.0254 ÷ measured GLB bounding-box dimension. Measurements apply only to the named target asset; the earlier NQR dimensions are not reused for the uploaded NRR EV.</p>
   </div>;
 }
